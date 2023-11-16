@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/lafriks/go-tiled"
 	"golang.org/x/image/colornames"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 	"image"
+	"image/color"
 	"log"
 	"path"
 )
@@ -98,37 +103,43 @@ func (game *rpgGame) Update() error {
 }
 
 func (game *rpgGame) Draw(screen *ebiten.Image) {
-	screen.Fill(colornames.Blue)
+	//screen.Fill(colornames.Blue)
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Reset()
-	/*
-		for tileY := 0; tileY < game.level.Height; tileY++ {
-			for tileX := 0; tileX < game.level.Width; tileX++ {
-				op.GeoM.Reset()
-				tileXPos := float64(game.level.TileWidth * tileX)
-				tileYPos := float64(game.level.TileHeight * tileY)
-				op.GeoM.Translate(tileXPos, tileYPos)
+	///*
+	for tileY := 0; tileY < game.level.Height; tileY++ {
+		for tileX := 0; tileX < game.level.Width; tileX++ {
+			op.GeoM.Reset()
+			//get on screen position
+			tileXPos := float64(game.level.TileWidth * tileX)
+			tileYPos := float64(game.level.TileHeight * tileY)
+			op.GeoM.Translate(tileXPos, tileYPos)
 
-				// Get the tile ID from the appropriate layer
-				tileToDraw := game.level.Layers[0].Tiles[tileY*game.level.Width+tileX]
+			// Get the tile ID from the appropriate LAYER
+			tileToDraw := game.level.Layers[0].Tiles[tileY*game.level.Width+tileX]
 
-				// Retrieve the corresponding sub-image from the map
-				ebitenTileToDraw, err := game.tileHash[tileToDraw.ID]
-				if err {
-					// Handle the case where the tile ID is not found in the map
-					fmt.Printf("Tile ID %d not found in tileHash\n", tileToDraw.ID)
-					continue
-				}
-
-				// Draw the sub-image
-				screen.DrawImage(ebitenTileToDraw, op)
+			// Retrieve the corresponding sub-image from the map
+			ebitenTileToDraw, ok := game.tileHash[tileToDraw.ID]
+			if !ok {
+				// Handle the case where the tile ID is not found in the map
+				fmt.Printf("Tile ID %d not found in tileHash\n", tileToDraw.ID)
+				continue
 			}
-		} */
+
+			// Draw the sub-image
+			screen.DrawImage(ebitenTileToDraw, op)
+		}
+	} //*/
 
 	drawPlayerFromSpriteSheet(op, screen, game.player)
 	for i := range game.chs {
 		drawImageFromSpriteSheet(op, screen, game.chs[i])
 	}
+	//DrawCenteredText(screen, font.Face("Comic Sans"), "hello", 200, 100)
+	img := ebiten.NewImage(300, 100)
+	addLabel(img, 20, 30, "Hello Go")
+	op.GeoM.Reset()
+	screen.DrawImage(img, op)
 }
 
 func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter character) {
@@ -149,17 +160,17 @@ func drawImageFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image,
 	if targetCharacter.direction == CHARACTLEFT {
 		op.GeoM.Scale(resize, resize)
 		op.GeoM.Translate(float64(targetCharacter.xLoc), float64(targetCharacter.yLoc))
-	} /*else if targetCharacter.direction == CHARACTRIGHT {
+	} else if targetCharacter.direction == CHARACTRIGHT {
 		op.GeoM.Scale(-resize, resize)
 		op.GeoM.Translate(
 			float64(targetCharacter.xLoc)+(float64(targetCharacter.FRAME_WIDTH)*resize), float64(targetCharacter.yLoc))
-	}*/
+	}
 	screen.DrawImage(targetCharacter.spriteSheet.SubImage(
 		image.Rect(
 			targetCharacter.frame*targetCharacter.FRAME_WIDTH,
-			targetCharacter.imageYOffset*targetCharacter.direction*targetCharacter.FRAME_HEIGHT,
+			targetCharacter.imageYOffset*targetCharacter.FRAME_HEIGHT,
 			targetCharacter.frame*targetCharacter.FRAME_WIDTH+targetCharacter.FRAME_WIDTH,
-			targetCharacter.direction*targetCharacter.FRAME_HEIGHT+targetCharacter.FRAME_HEIGHT*targetCharacter.imageYOffset)).(*ebiten.Image), op)
+			targetCharacter.FRAME_HEIGHT+targetCharacter.FRAME_HEIGHT*targetCharacter.imageYOffset)).(*ebiten.Image), op)
 }
 
 func animatePlayerSprite(targetCharacter *character) {
@@ -242,7 +253,7 @@ func main() {
 
 	leprechaun := character{
 		spriteSheet:  enemySpriteSheet,
-		xLoc:         100,
+		xLoc:         300,
 		yLoc:         300,
 		inventory:    nil,
 		direction:    CHARACTRIGHT,
@@ -343,4 +354,24 @@ func getPlayerInput(game *rpgGame) {
 	} else if ebiten.IsKeyPressed(ebiten.KeyS) {
 		game.player.direction = DOWN
 	}
+}
+
+func DrawCenteredText(screen *ebiten.Image, font font.Face, s string, cx, cy int) { //from https://github.com/sedyh/ebitengine-cheatsheet
+	bounds := text.BoundString(font, s)
+	x, y := cx-bounds.Min.X-bounds.Dx()/2, cy-bounds.Min.Y-bounds.Dy()/2
+	text.Draw(screen, s, font, x, y, colornames.White)
+}
+
+func addLabel(img *ebiten.Image, x, y int, label string) {
+	// from https://stackoverflow.com/a/38300583
+	col := color.RGBA{100, 200, 0, 255}
+	point := fixed.Point26_6{fixed.I(x), fixed.I(y)}
+
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  image.NewUniform(col),
+		Face: basicfont.Face7x13,
+		Dot:  point,
+	}
+	d.DrawString(label)
 }
