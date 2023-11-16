@@ -1,0 +1,52 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "assets/world.tmx",
+    "expandedProjectPaths": [
+        "assets",
+        "."
+    ],
+    "fileStates": {
+        "assets/world.tmx": {
+            "scale": 1.8841666666666665,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 240.1592215833702,
+                "y": 239.36311366651924
+            }
+        },
+        "assets/world.tmx#overworld": {
+            "scaleInDock": 1
+        },
+        "world.tmx": {
+            "scale": 1.8841666666666665,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 240.1592215833702,
+                "y": 240.42459088898715
+            }
+        },
+        "world.tmx#overworld": {
+            "scaleInDock": 1
+        }
+    },
+    "last.imagePath": "C:/Users/Josh/Documents/GolandProjects/Comp426_Project3_RPG/assets/world",
+    "map.height": 30,
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 16,
+    "map.tileWidth": 16,
+    "openFiles": [
+        "assets/world.tmx"
+    ],
+    "project": "rpgProject.tiled-project",
+    "recentFiles": [
+        "assets/world.tmx"
+    ],
+    "tileset.embedInMap": true,
+    "tileset.tileSize": {
+        "height": 16,
+        "width": 16
+    }
+}
