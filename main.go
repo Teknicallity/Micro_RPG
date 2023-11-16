@@ -43,7 +43,9 @@ const (
 )
 
 type rpgGame struct {
-	level    *tiled.Map
+	level *tiled.Map
+	//array of maps? levels
+	//current map value
 	tileHash map[uint32]*ebiten.Image
 	player   character
 	chs      []character
@@ -98,6 +100,8 @@ func (game *rpgGame) Update() error {
 			}
 		}
 	}
+
+	//every broder tile, add rectangle to slice, loop through and check collisons
 
 	return nil
 }
@@ -197,7 +201,7 @@ func animatePlayerSprite(targetCharacter *character) {
 	}
 }
 
-func (game rpgGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+func (g *rpgGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return outsideWidth, outsideHeight //by default, just return the current dimensions
 }
 
@@ -330,15 +334,28 @@ func makeEbitenImagesFromMap(tiledMap tiled.Map) map[uint32]*ebiten.Image {
 	}
 
 	// Create sub-images for each tile and store them in the map
-	for _, tile := range tiledMap.Tilesets[0].Tiles {
-		x := int(tile.Image.Width) * (int(tile.ID) % int(tiledMap.Tilesets[0].Columns))
-		y := int(tile.Image.Height) * (int(tile.ID) / int(tiledMap.Tilesets[0].Columns))
+	//	for _, tile := range tiledMap.Tilesets[0].Tiles {
+	//		x := int(tile.Image.Width) * (int(tile.ID) % int(tiledMap.Tilesets[0].Columns))
+	//		y := int(tile.Image.Height) * (int(tile.ID) / int(tiledMap.Tilesets[0].Columns))
 
-		subImageRect := image.Rect(x, y, x+int(tile.Image.Width), y+int(tile.Image.Height))
-		subImage := ebitenImageTileset.SubImage(subImageRect).(*ebiten.Image)
-
-		fmt.Println(tile.ID)
-		idToImage[tile.ID] = subImage
+	//subImageRect := image.Rect(x, y, x+tiledMap.TileWidth, y+tiledMap.TileHeight)
+	//subImage := ebitenImageTileset.SubImage(subImageRect).(*ebiten.Image)
+	//tileID := tiledMap.Layers[0].Tiles[0].ID
+	//fmt.Println(tileID)
+	//idToImage[tileID] = subImage
+	//}
+	for _, layer := range tiledMap.Layers {
+		for _, tile := range layer.Tiles {
+			if _, ok := idToImage[tile.ID]; !ok {
+				x := int((tile.ID)%uint32(tiledMap.Tilesets[0].Columns)) * tiledMap.TileWidth
+				y := int((tile.ID)/uint32(tiledMap.Tilesets[0].Columns)) * tiledMap.TileHeight
+				subImageRect := image.Rect(x, y, x+tiledMap.TileWidth, y+tiledMap.TileHeight)
+				subImage := ebitenImageTileset.SubImage(subImageRect).(*ebiten.Image)
+				idToImage[tile.ID] = subImage
+			} else {
+				//do nothing?
+			}
+		}
 	}
 
 	return idToImage
@@ -364,7 +381,7 @@ func DrawCenteredText(screen *ebiten.Image, font font.Face, s string, cx, cy int
 
 func addLabel(img *ebiten.Image, x, y int, label string) {
 	// from https://stackoverflow.com/a/38300583
-	col := color.RGBA{100, 200, 0, 255}
+	col := color.RGBA{200, 100, 0, 255}
 	point := fixed.Point26_6{fixed.I(x), fixed.I(y)}
 
 	d := &font.Drawer{
