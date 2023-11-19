@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"github.com/co0p/tankism/lib/collision"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -15,6 +16,7 @@ import (
 	"image/color"
 	"log"
 	"path"
+	"slices"
 )
 
 //go:embed assets/*
@@ -23,6 +25,8 @@ var EmbeddedAssets embed.FS
 const (
 	FRAMES_PER_ROW = 4
 	FRAME_COUNT    = 8
+	resizeScale    = 3
+	worldScale     = 3
 )
 
 const (
@@ -43,18 +47,24 @@ const (
 )
 
 type rpgGame struct {
-	level *tiled.Map
-	//array of maps? levels
-	//current map value
-	tileHash map[uint32]*ebiten.Image
-	player   character
-	chs      []character
+	levelCurrent    *tiled.Map
+	levelMaps       []*tiled.Map
+	tileHashCurrent map[uint32]*ebiten.Image
+	tileHashes      []map[uint32]*ebiten.Image
+	windowWidth     int
+	windowHeight    int
+	barrierIDs      []uint32
+	barrierRect     []image.Rectangle
+	teleporterRects map[uint32]image.Rectangle
+	player          character
+	chs             []character
 }
 
 type character struct {
 	spriteSheet  *ebiten.Image
 	xLoc         int
 	yLoc         int
+	hitPoints    int
 	inventory    []item
 	direction    int
 	frame        int
@@ -63,6 +73,8 @@ type character struct {
 	FRAME_WIDTH  int
 	action       int
 	imageYOffset int
+	speed        int
+	level        *tiled.Map
 }
 
 type item struct {
@@ -80,14 +92,16 @@ func (game *rpgGame) Update() error {
 		game.player.action = WALK
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyA) && game.player.action == WALK {
-		game.player.xLoc -= 3
+		game.movePlayer(&game.player.xLoc)
 	} else if ebiten.IsKeyPressed(ebiten.KeyD) && game.player.action == WALK {
-		game.player.xLoc += 3
+		game.movePlayer(&game.player.xLoc)
 	} else if ebiten.IsKeyPressed(ebiten.KeyW) && game.player.action == WALK {
-		game.player.yLoc -= 3
+		game.movePlayer(&game.player.yLoc)
 	} else if ebiten.IsKeyPressed(ebiten.KeyS) && game.player.action == WALK {
-		game.player.yLoc += 3
+		game.movePlayer(&game.player.yLoc)
 	}
+	game.outOfBoundsCheck()
+	//fmt.Printf("x: %d, y: %d\n", game.player.xLoc, game.player.yLoc)
 
 	for i := range game.chs {
 		if game.chs[i].action == WALK {
@@ -106,39 +120,96 @@ func (game *rpgGame) Update() error {
 	return nil
 }
 
+func (game *rpgGame) movePlayer(location *int) {
+	if isBorderColliding(game.barrierRect, &game.player) {
+		*location -= translateDirection(game.player.direction) * game.player.speed * 5
+	} else {
+		*location += translateDirection(game.player.direction) * game.player.speed
+	}
+}
+
+func translateDirection(direction int) int {
+	switch direction {
+	case DOWN:
+		return 1
+	case RIGHT:
+		return 1
+	case UP:
+		return -1
+	case LEFT:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func (game *rpgGame) outOfBoundsCheck() {
+	if game.player.xLoc < -100 || game.player.xLoc > game.levelCurrent.TileWidth*game.levelCurrent.Width*worldScale {
+		game.player.xLoc = 300
+		game.player.yLoc = 300
+	} else if game.player.yLoc < -100 || game.player.yLoc > game.levelCurrent.TileHeight*game.levelCurrent.Height*worldScale {
+		game.player.xLoc = 300
+		game.player.yLoc = 300
+	}
+}
+
 func (game *rpgGame) Draw(screen *ebiten.Image) {
 	//screen.Fill(colornames.Blue)
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Reset()
-	///*
-	for tileY := 0; tileY < game.level.Height; tileY++ {
-		for tileX := 0; tileX < game.level.Width; tileX++ {
-			op.GeoM.Reset()
-			//get on screen position
-			tileXPos := float64(game.level.TileWidth * tileX)
-			tileYPos := float64(game.level.TileHeight * tileY)
-			op.GeoM.Translate(tileXPos, tileYPos)
 
-			// Get the tile ID from the appropriate LAYER
-			tileToDraw := game.level.Layers[0].Tiles[tileY*game.level.Width+tileX]
+	var teleporterIDs = []uint32{1, 2, 3}
+	for _, layer := range game.levelCurrent.Layers {
+		for tileY := 0; tileY < game.levelCurrent.Height; tileY++ {
+			for tileX := 0; tileX < game.levelCurrent.Width; tileX++ {
+				op.GeoM.Reset()
+				//get on screen position
+				tileXPos := float64(game.levelCurrent.TileWidth * tileX)
+				tileYPos := float64(game.levelCurrent.TileHeight * tileY)
+				op.GeoM.Translate(tileXPos, tileYPos)
 
-			// Retrieve the corresponding sub-image from the map
-			ebitenTileToDraw, ok := game.tileHash[tileToDraw.ID]
-			if !ok {
-				// Handle the case where the tile ID is not found in the map
-				fmt.Printf("Tile ID %d not found in tileHash\n", tileToDraw.ID)
-				continue
+				// Get the tile ID from the appropriate LAYER
+				tileToDraw := layer.Tiles[tileY*game.levelCurrent.Width+tileX]
+
+				if slices.Contains(game.barrierIDs, tileToDraw.ID) {
+					barrierRectangle := image.Rect(int(tileXPos), int(tileYPos),
+						int(tileXPos)+game.levelCurrent.TileWidth, int(tileYPos)+game.levelCurrent.TileHeight)
+					game.barrierRect = append(game.barrierRect, barrierRectangle)
+				}
+				if slices.Contains(teleporterIDs, tileToDraw.ID) {
+					teleporterRectangle := image.Rect(int(tileXPos), int(tileYPos),
+						int(tileXPos)+game.levelCurrent.TileWidth, int(tileYPos)+game.levelCurrent.TileHeight)
+					game.teleporterRects[tileToDraw.ID] = teleporterRectangle
+				}
+
+				if tileToDraw.ID != 0 {
+					// Retrieve the corresponding sub-image from the map
+					ebitenTileToDraw, ok := game.tileHashCurrent[tileToDraw.ID]
+					if !ok {
+						// Handle the case where the tile ID is not found in the map
+						fmt.Printf("Tile ID %d not found in tileHashCurrent\n", tileToDraw.ID)
+						continue
+					}
+					op.GeoM.Scale(worldScale, worldScale)
+					// Draw the sub-image
+					screen.DrawImage(ebitenTileToDraw, op)
+				}
 			}
-
-			// Draw the sub-image
-			screen.DrawImage(ebitenTileToDraw, op)
 		}
-	} //*/
+	}
+
+	teleID := getTeleporterCollisionID(game.teleporterRects, &game.player)
+	if teleID != 0 {
+		game.changeWorldMap(teleID)
+	}
 
 	drawPlayerFromSpriteSheet(op, screen, game.player)
-	for i := range game.chs {
-		drawImageFromSpriteSheet(op, screen, game.chs[i])
+	for _, charact := range game.chs {
+		if charact.level == game.levelCurrent {
+			drawImageFromSpriteSheet(op, screen, charact)
+		}
 	}
+
 	//DrawCenteredText(screen, font.Face("Comic Sans"), "hello", 200, 100)
 	img := ebiten.NewImage(300, 100)
 	addLabel(img, 20, 30, "Hello Go")
@@ -148,7 +219,7 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 
 func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter character) {
 	op.GeoM.Reset()
-	op.GeoM.Scale(3, 3)
+	op.GeoM.Scale(resizeScale, resizeScale)
 	op.GeoM.Translate(float64(targetCharacter.xLoc), float64(targetCharacter.yLoc))
 	screen.DrawImage(targetCharacter.spriteSheet.SubImage(
 		image.Rect(
@@ -160,14 +231,13 @@ func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image
 
 func drawImageFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter character) {
 	op.GeoM.Reset()
-	resize := float64(3)
 	if targetCharacter.direction == CHARACTLEFT {
-		op.GeoM.Scale(resize, resize)
+		op.GeoM.Scale(resizeScale, resizeScale)
 		op.GeoM.Translate(float64(targetCharacter.xLoc), float64(targetCharacter.yLoc))
 	} else if targetCharacter.direction == CHARACTRIGHT {
-		op.GeoM.Scale(-resize, resize)
+		op.GeoM.Scale(-resizeScale, resizeScale)
 		op.GeoM.Translate(
-			float64(targetCharacter.xLoc)+(float64(targetCharacter.FRAME_WIDTH)*resize), float64(targetCharacter.yLoc))
+			float64(targetCharacter.xLoc)+(float64(targetCharacter.FRAME_WIDTH)*resizeScale), float64(targetCharacter.yLoc))
 	}
 	screen.DrawImage(targetCharacter.spriteSheet.SubImage(
 		image.Rect(
@@ -201,16 +271,31 @@ func animatePlayerSprite(targetCharacter *character) {
 	}
 }
 
-func (g *rpgGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
+func (game *rpgGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return outsideWidth, outsideHeight //by default, just return the current dimensions
 }
 
 func main() {
 	ebiten.SetWindowTitle("SimpleRPG")
 
-	gameMap := loadMapFromEmbedded(path.Join("assets", "world.tmx"))
-	ebiten.SetWindowSize(gameMap.TileWidth*gameMap.Width, gameMap.TileHeight*gameMap.Height)
+	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
+	levelmaps := make([]*tiled.Map, 0, 5)
+	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx"))
 	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
+	levelmaps = append(levelmaps, gameMap)
+	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx"))
+	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
+	levelmaps = append(levelmaps, gameMap)
+	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx"))
+	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
+	levelmaps = append(levelmaps, gameMap)
+	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+
+	windowX := gameMap.TileWidth * gameMap.Width * worldScale
+	windowY := gameMap.TileHeight * gameMap.Height * worldScale
+	ebiten.SetWindowSize(windowX, windowY)
 
 	playerSpriteSheet := LoadEmbeddedImage("characters", "player.png")
 	enemySpriteSheet := LoadEmbeddedImage("characters", "characters.png")
@@ -225,6 +310,8 @@ func main() {
 		FRAME_HEIGHT: 32,
 		FRAME_WIDTH:  16,
 		imageYOffset: -1,
+		speed:        3,
+		hitPoints:    3,
 	}
 
 	mannequin := character{
@@ -239,6 +326,8 @@ func main() {
 		FRAME_WIDTH:  32,
 		action:       WALK,
 		imageYOffset: 0,
+		level:        levelmaps[1],
+		hitPoints:    1,
 	}
 
 	king := character{
@@ -253,6 +342,8 @@ func main() {
 		FRAME_WIDTH:  32,
 		action:       WALK,
 		imageYOffset: 1,
+		level:        levelmaps[2],
+		hitPoints:    1,
 	}
 
 	leprechaun := character{
@@ -267,17 +358,29 @@ func main() {
 		FRAME_WIDTH:  32,
 		action:       WALK,
 		imageYOffset: 2,
+		level:        levelmaps[2],
+		hitPoints:    1,
 	}
 	enemies := make([]character, 0, 5)
 	enemies = append(enemies, mannequin)
 	enemies = append(enemies, king)
 	enemies = append(enemies, leprechaun)
 
+	teleRectangles := map[uint32]image.Rectangle{}
+
+	var barrierID = []uint32{40, 41, 42, 43, 80, 81, 82, 83}
+
 	game := rpgGame{
-		level:    gameMap,
-		tileHash: ebitenImageMap,
-		player:   user,
-		chs:      enemies,
+		levelCurrent:    gameMap,
+		tileHashCurrent: ebitenImageMap,
+		levelMaps:       levelmaps,
+		tileHashes:      tileMapHashes,
+		player:          user,
+		chs:             enemies,
+		barrierIDs:      barrierID,
+		windowWidth:     windowX,
+		windowHeight:    windowY,
+		teleporterRects: teleRectangles,
 	}
 	err := ebiten.RunGame(&game)
 	if err != nil {
@@ -305,22 +408,6 @@ func loadMapFromEmbedded(name string) *tiled.Map {
 	return embeddedMap
 }
 
-//func makeEbitenImagesFromMap(gameMap tiled.Map) map[uint32]*ebiten.Image {
-//	idToImage := make(map[uint32]*ebiten.Image)
-//	for _, tile := range gameMap.Tilesets[0].Tiles {
-//		embeddedFile, err := EmbeddedAssets.Open(path.Join("assets", tile.Image.Source))
-//		if err != nil {
-//			log.Fatal("failed to load embedded image ", embeddedFile, err)
-//		}
-//		ebitenImageTile, _, err := ebitenutil.NewImageFromReader(embeddedFile)
-//		if err != nil {
-//			fmt.Println("Error loading tile image:", tile.Image.Source, err)
-//		}
-//		idToImage[tile.ID] = ebitenImageTile
-//	}
-//	return idToImage
-//}
-
 func makeEbitenImagesFromMap(tiledMap tiled.Map) map[uint32]*ebiten.Image {
 	idToImage := make(map[uint32]*ebiten.Image)
 	tilesetImagePath := path.Join("assets", tiledMap.Tilesets[0].Image.Source)
@@ -332,21 +419,10 @@ func makeEbitenImagesFromMap(tiledMap tiled.Map) map[uint32]*ebiten.Image {
 	if err != nil {
 		fmt.Println("Error loading tileset image:", tilesetImagePath, err)
 	}
-
-	// Create sub-images for each tile and store them in the map
-	//	for _, tile := range tiledMap.Tilesets[0].Tiles {
-	//		x := int(tile.Image.Width) * (int(tile.ID) % int(tiledMap.Tilesets[0].Columns))
-	//		y := int(tile.Image.Height) * (int(tile.ID) / int(tiledMap.Tilesets[0].Columns))
-
-	//subImageRect := image.Rect(x, y, x+tiledMap.TileWidth, y+tiledMap.TileHeight)
-	//subImage := ebitenImageTileset.SubImage(subImageRect).(*ebiten.Image)
-	//tileID := tiledMap.Layers[0].Tiles[0].ID
-	//fmt.Println(tileID)
-	//idToImage[tileID] = subImage
-	//}
 	for _, layer := range tiledMap.Layers {
 		for _, tile := range layer.Tiles {
-			if _, ok := idToImage[tile.ID]; !ok {
+
+			if _, ok := idToImage[tile.ID]; !ok { //if tileID does not exists
 				x := int((tile.ID)%uint32(tiledMap.Tilesets[0].Columns)) * tiledMap.TileWidth
 				y := int((tile.ID)/uint32(tiledMap.Tilesets[0].Columns)) * tiledMap.TileHeight
 				subImageRect := image.Rect(x, y, x+tiledMap.TileWidth, y+tiledMap.TileHeight)
@@ -391,4 +467,84 @@ func addLabel(img *ebiten.Image, x, y int, label string) {
 		Dot:  point,
 	}
 	d.DrawString(label)
+}
+
+func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
+	playerBounds := collision.BoundingBox{
+		X:      float64(player.xLoc),
+		Y:      float64(player.yLoc),
+		Width:  float64(player.FRAME_WIDTH * resizeScale),
+		Height: float64(player.FRAME_HEIGHT * resizeScale),
+	}
+
+	for _, border := range borderRects {
+		borderBounds := collision.BoundingBox{
+			X:      float64(border.Min.X * worldScale),
+			Y:      float64(border.Min.Y * worldScale),
+			Width:  float64(border.Dx() * worldScale),
+			Height: float64(border.Dy() * worldScale),
+		}
+		if collision.AABBCollision(playerBounds, borderBounds) {
+			return true
+		}
+	}
+	return false
+}
+
+func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player *character) uint32 {
+	playerBounds := collision.BoundingBox{
+		X:      float64(player.xLoc),
+		Y:      float64(player.yLoc),
+		Width:  float64(player.FRAME_WIDTH * resizeScale),
+		Height: float64(player.FRAME_HEIGHT * resizeScale),
+	}
+	for ID, teleporter := range teleporterRects {
+		teleporterBounds := collision.BoundingBox{
+			X:      float64(teleporter.Min.X * worldScale),
+			Y:      float64(teleporter.Min.Y * worldScale),
+			Width:  float64(teleporter.Dx() * worldScale),
+			Height: float64(teleporter.Dy() * worldScale),
+		}
+		if collision.AABBCollision(playerBounds, teleporterBounds) {
+			return ID
+		}
+	}
+	return 0
+}
+
+//if tileID ==1 change to x map  playerpositionX-screen absolute value
+
+func (game *rpgGame) changeWorldMap(tileID uint32) {
+	//
+	if tileID == 1 {
+		// go to right world
+		game.levelCurrent = game.levelMaps[1]
+		game.tileHashCurrent = game.tileHashes[1]
+		game.player.xLoc = 50
+	} else if tileID == 2 {
+		// go to main world
+		game.levelCurrent = game.levelMaps[2]
+		game.tileHashCurrent = game.tileHashes[2]
+		if game.player.xLoc > 600 {
+			game.player.xLoc = 50
+		} else if game.player.xLoc < 150 {
+			game.player.xLoc = game.windowWidth - 100
+		}
+	} else if tileID == 3 {
+		//go to left world
+		game.levelCurrent = game.levelMaps[0]
+		game.tileHashCurrent = game.tileHashes[0]
+		game.player.xLoc = game.windowWidth - 100
+	}
+	//fmt.Println(game.levelCurrent)
+	game.barrierRect = game.barrierRect[:0]
+	game.teleporterRects = make(map[uint32]image.Rectangle)
+}
+
+func (character *character) death() {
+
+}
+
+func itemPickup() {
+
 }
