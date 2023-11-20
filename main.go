@@ -38,12 +38,18 @@ const (
 
 const (
 	WALK = iota
-	ATTACK
+	INTERACT
 )
 
 const (
 	CHARACTRIGHT = iota
 	CHARACTLEFT
+)
+
+const (
+	NOTTALKED = iota
+	TALKED
+	RETURNEDITEM
 )
 
 type rpgGame struct {
@@ -57,24 +63,28 @@ type rpgGame struct {
 	barrierRect     []image.Rectangle
 	teleporterRects map[uint32]image.Rectangle
 	player          character
-	chs             []character
+	enemies         []character
+	questGiver      character
 }
 
 type character struct {
-	spriteSheet  *ebiten.Image
-	xLoc         int
-	yLoc         int
-	hitPoints    int
-	inventory    []item
-	direction    int
-	frame        int
-	frameDelay   int
-	FRAME_HEIGHT int
-	FRAME_WIDTH  int
-	action       int
-	imageYOffset int
-	speed        int
-	level        *tiled.Map
+	spriteSheet      *ebiten.Image
+	xLoc             int
+	yLoc             int
+	hitPoints        int
+	inventory        []item
+	direction        int
+	frame            int
+	frameDelay       int
+	FRAME_HEIGHT     int
+	FRAME_WIDTH      int
+	action           int
+	imageYOffset     int
+	speed            int
+	level            *tiled.Map
+	interactRect     image.Rectangle
+	interactCooldown int
+	questProgress    int
 }
 
 type item struct {
@@ -87,7 +97,7 @@ func (game *rpgGame) Update() error {
 
 	animatePlayerSprite(&game.player)
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		game.player.action = ATTACK
+		game.player.action = INTERACT
 	} else {
 		game.player.action = WALK
 	}
@@ -103,13 +113,36 @@ func (game *rpgGame) Update() error {
 	game.outOfBoundsCheck()
 	//fmt.Printf("x: %d, y: %d\n", game.player.xLoc, game.player.yLoc)
 
-	for i := range game.chs {
-		if game.chs[i].action == WALK {
-			game.chs[i].frameDelay += 1
-			if game.chs[i].frameDelay%8 == 0 {
-				game.chs[i].frame += 1
-				if game.chs[i].frame >= 4 {
-					game.chs[i].frame = 0
+	if game.player.action == INTERACT && game.player.interactCooldown < 1 {
+		game.player.interactCooldown = 200
+		for _, enemy := range game.enemies {
+			if game.player.playerInteractWithCheck(&enemy) {
+				enemy.death()
+			}
+		}
+		if game.player.playerInteractWithCheck(&game.questGiver) {
+			if game.player.questProgress == NOTTALKED {
+				game.player.questProgress = TALKED
+				//display quest text
+			} else if game.player.questProgress == TALKED { //AND H IASTEM
+				game.player.questProgress = RETURNEDITEM
+				//display a thank you
+				//take item from player inventory
+			} else if game.player.questProgress == RETURNEDITEM {
+				//display another thank you message?
+			}
+		}
+	} else {
+		game.player.interactCooldown--
+	}
+
+	for i := range game.enemies {
+		if game.enemies[i].action == WALK {
+			game.enemies[i].frameDelay += 1
+			if game.enemies[i].frameDelay%8 == 0 {
+				game.enemies[i].frame += 1
+				if game.enemies[i].frame >= 4 {
+					game.enemies[i].frame = 0
 				}
 			}
 		}
@@ -204,7 +237,7 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	}
 
 	drawPlayerFromSpriteSheet(op, screen, game.player)
-	for _, charact := range game.chs {
+	for _, charact := range game.enemies {
 		if charact.level == game.levelCurrent {
 			drawImageFromSpriteSheet(op, screen, charact)
 		}
@@ -256,7 +289,7 @@ func animatePlayerSprite(targetCharacter *character) {
 				targetCharacter.frame = 0
 			}
 		}
-	} else if targetCharacter.action == ATTACK {
+	} else if targetCharacter.action == INTERACT {
 		if 4 <= targetCharacter.frame && targetCharacter.frame <= 7 {
 			targetCharacter.frameDelay += 1
 			if targetCharacter.frameDelay%8 == 0 {
@@ -301,17 +334,19 @@ func main() {
 	enemySpriteSheet := LoadEmbeddedImage("characters", "characters.png")
 
 	user := character{
-		spriteSheet:  playerSpriteSheet,
-		xLoc:         250,
-		yLoc:         250,
-		direction:    RIGHT,
-		frame:        0,
-		frameDelay:   0,
-		FRAME_HEIGHT: 32,
-		FRAME_WIDTH:  16,
-		imageYOffset: -1,
-		speed:        3,
-		hitPoints:    3,
+		spriteSheet:      playerSpriteSheet,
+		xLoc:             250,
+		yLoc:             250,
+		direction:        RIGHT,
+		frame:            0,
+		frameDelay:       0,
+		FRAME_HEIGHT:     32,
+		FRAME_WIDTH:      16,
+		imageYOffset:     -1,
+		speed:            3,
+		hitPoints:        3,
+		questProgress:    NOTTALKED,
+		interactCooldown: 200,
 	}
 
 	mannequin := character{
@@ -376,7 +411,7 @@ func main() {
 		levelMaps:       levelmaps,
 		tileHashes:      tileMapHashes,
 		player:          user,
-		chs:             enemies,
+		enemies:         enemies,
 		barrierIDs:      barrierID,
 		windowWidth:     windowX,
 		windowHeight:    windowY,
@@ -510,6 +545,50 @@ func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player
 		}
 	}
 	return 0
+}
+
+func (player *character) playerInteractWithCheck(target *character) bool {
+	player.updatePlayerInteractRectangle()
+	targetBounds := collision.BoundingBox{
+		X:      float64(target.xLoc),
+		Y:      float64(target.yLoc),
+		Width:  float64(target.FRAME_WIDTH * resizeScale),
+		Height: float64(target.FRAME_HEIGHT * resizeScale),
+	}
+	playerBounds := collision.BoundingBox{
+		X:      float64(player.xLoc),
+		Y:      float64(player.yLoc),
+		Width:  float64(player.FRAME_WIDTH * resizeScale),
+		Height: float64(player.FRAME_HEIGHT * resizeScale),
+	}
+	playerInteractBounds := collision.BoundingBox{
+		X:      float64(player.interactRect.Min.X),
+		Y:      float64(player.interactRect.Min.Y),
+		Width:  float64(player.interactRect.Dx() * worldScale),
+		Height: float64(player.interactRect.Dy() * worldScale),
+	}
+	if collision.AABBCollision(playerBounds, targetBounds) || collision.AABBCollision(playerInteractBounds, targetBounds) {
+		return true
+	}
+	return false
+}
+
+func (player *character) updatePlayerInteractRectangle() {
+	//based on direction, change targetRectangle
+	switch player.direction {
+	case DOWN:
+		player.interactRect = image.Rect(player.xLoc, player.yLoc+player.FRAME_HEIGHT,
+			player.xLoc+player.FRAME_WIDTH, player.yLoc+player.FRAME_WIDTH)
+	case RIGHT:
+		player.interactRect = image.Rect(player.xLoc+player.FRAME_WIDTH, player.yLoc,
+			player.xLoc+player.FRAME_WIDTH, player.yLoc+player.FRAME_HEIGHT)
+	case UP:
+		player.interactRect = image.Rect(player.xLoc, player.yLoc,
+			player.xLoc+player.FRAME_WIDTH, player.yLoc-player.FRAME_WIDTH)
+	case LEFT:
+		player.interactRect = image.Rect(player.xLoc, player.yLoc,
+			player.xLoc-player.FRAME_WIDTH, player.yLoc+player.FRAME_HEIGHT)
+	}
 }
 
 //if tileID ==1 change to x map  playerpositionX-screen absolute value
