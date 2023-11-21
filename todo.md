@@ -1,13 +1,10 @@
 ## TODO
 
 - Implement quest logic
-- write death function
-- drop inventory on death
-- inventory system
-- pick up items
 - make items to get
 - implement sounds
 
 
+- drop player inventory on death
 - more animated sprites
 - statistics
