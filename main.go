@@ -6,11 +6,13 @@ import (
 	"github.com/co0p/tankism/lib/collision"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/lafriks/go-tiled"
 	"golang.org/x/image/colornames"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 	"image"
 	"image/color"
@@ -27,6 +29,7 @@ const (
 	FRAME_COUNT    = 8
 	resizeScale    = 3
 	worldScale     = 3
+	COOLDOWN       = 60
 )
 
 const (
@@ -65,6 +68,9 @@ type rpgGame struct {
 	player          character
 	enemies         []character
 	questGiver      character
+	font            font.Face
+	heartImage      image.Image
+	droppedItems    []item
 }
 
 type character struct {
@@ -88,14 +94,29 @@ type character struct {
 }
 
 type item struct {
-	picture     *ebiten.Image
-	displayName string
+	picture          image.Image
+	displayName      string
+	xLoc             int
+	yLoc             int
+	yAnimationOffset int
+	delay            int
+}
+
+var HeartItem = item{
+	picture:          grabHeartImage(),
+	displayName:      "Heart",
+	xLoc:             400,
+	yLoc:             100,
+	yAnimationOffset: 0,
+	delay:            0,
 }
 
 func (game *rpgGame) Update() error {
 	getPlayerInput(game)
 
 	animatePlayerSprite(&game.player)
+	game.animateDroppedItems()
+
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
 		game.player.action = INTERACT
 	} else {
@@ -112,15 +133,22 @@ func (game *rpgGame) Update() error {
 	}
 	game.outOfBoundsCheck()
 	//fmt.Printf("x: %d, y: %d\n", game.player.xLoc, game.player.yLoc)
+	game.itemsPickupCheck()
+	game.player.convertHeartItemsToHealth()
 
-	if game.player.action == INTERACT && game.player.interactCooldown < 1 {
-		game.player.interactCooldown = 200
-		for _, enemy := range game.enemies {
-			if game.player.playerInteractWithCheck(&enemy) {
-				enemy.death()
+	if game.player.action == INTERACT && game.player.interactCooldown < 0 {
+		game.player.interactCooldown = COOLDOWN
+		for i := range game.enemies {
+			if game.enemies[i].level == game.levelCurrent {
+				if game.player.playerInteractWithCheck(&game.enemies[i]) {
+					game.enemies[i].hitPoints--
+					if game.enemies[i].hitPoints == 0 {
+						game.enemies[i].death(game)
+					}
+				}
 			}
 		}
-		if game.player.playerInteractWithCheck(&game.questGiver) {
+		if game.player.playerInteractWithCheck(&game.questGiver) && game.questGiver.level == game.levelCurrent {
 			if game.player.questProgress == NOTTALKED {
 				game.player.questProgress = TALKED
 				//display quest text
@@ -132,9 +160,10 @@ func (game *rpgGame) Update() error {
 				//display another thank you message?
 			}
 		}
-	} else {
+	} else if game.player.interactCooldown > -10 {
 		game.player.interactCooldown--
 	}
+	game.enemiesAttack()
 
 	for i := range game.enemies {
 		if game.enemies[i].action == WALK {
@@ -147,8 +176,6 @@ func (game *rpgGame) Update() error {
 			}
 		}
 	}
-
-	//every broder tile, add rectangle to slice, loop through and check collisons
 
 	return nil
 }
@@ -243,11 +270,23 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	//DrawCenteredText(screen, font.Face("Comic Sans"), "hello", 200, 100)
+	for _, item := range game.droppedItems {
+		op.GeoM.Reset()
+		op.GeoM.Scale(resizeScale-1, resizeScale-1)
+		op.GeoM.Translate(float64(item.xLoc), float64(item.yLoc-item.yAnimationOffset))
+		screen.DrawImage(item.picture.(*ebiten.Image), op)
+	}
+
+	game.drawPlayerHealth(op, screen)
+
 	img := ebiten.NewImage(300, 100)
 	addLabel(img, 20, 30, "Hello Go")
 	op.GeoM.Reset()
 	screen.DrawImage(img, op)
+
+	if game.player.hitPoints <= 0 {
+		DrawCenteredText(screen, game.font, "GAME OVER", game.windowHeight/2, game.windowWidth/2)
+	}
 }
 
 func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter character) {
@@ -280,6 +319,15 @@ func drawImageFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image,
 			targetCharacter.FRAME_HEIGHT+targetCharacter.FRAME_HEIGHT*targetCharacter.imageYOffset)).(*ebiten.Image), op)
 }
 
+func (game *rpgGame) drawPlayerHealth(op *ebiten.DrawImageOptions, screen *ebiten.Image) {
+	op.GeoM.Reset()
+	op.GeoM.Scale(worldScale, worldScale)
+	for i := 0; i < game.player.hitPoints; i++ {
+		screen.DrawImage(game.heartImage.(*ebiten.Image), op)
+		op.GeoM.Translate(16*worldScale, 0)
+	}
+}
+
 func animatePlayerSprite(targetCharacter *character) {
 	if targetCharacter.action == WALK {
 		targetCharacter.frameDelay += 1
@@ -300,6 +348,22 @@ func animatePlayerSprite(targetCharacter *character) {
 			}
 		} else {
 			targetCharacter.frame = 7
+		}
+	}
+}
+
+func (game *rpgGame) animateDroppedItems() {
+	for i := range game.droppedItems {
+		game.droppedItems[i].itemAnimate()
+	}
+}
+
+func (item *item) itemAnimate() {
+	item.delay++
+	if item.delay%6 == 0 {
+		item.yAnimationOffset++
+		if item.yAnimationOffset > 5 {
+			item.yAnimationOffset = 0
 		}
 	}
 }
@@ -329,6 +393,7 @@ func main() {
 	windowX := gameMap.TileWidth * gameMap.Width * worldScale
 	windowY := gameMap.TileHeight * gameMap.Height * worldScale
 	ebiten.SetWindowSize(windowX, windowY)
+	fmt.Printf("windowWidth: %d, windowHeight: %d", windowX, windowY)
 
 	playerSpriteSheet := LoadEmbeddedImage("characters", "player.png")
 	enemySpriteSheet := LoadEmbeddedImage("characters", "characters.png")
@@ -346,60 +411,70 @@ func main() {
 		speed:            3,
 		hitPoints:        3,
 		questProgress:    NOTTALKED,
-		interactCooldown: 200,
+		interactCooldown: COOLDOWN / 2,
 	}
 
 	mannequin := character{
-		spriteSheet:  enemySpriteSheet,
-		xLoc:         100,
-		yLoc:         100,
-		inventory:    nil,
-		direction:    CHARACTLEFT,
-		frame:        0,
-		frameDelay:   0,
-		FRAME_HEIGHT: 32,
-		FRAME_WIDTH:  32,
-		action:       WALK,
-		imageYOffset: 0,
-		level:        levelmaps[1],
-		hitPoints:    1,
+		spriteSheet:      enemySpriteSheet,
+		xLoc:             100,
+		yLoc:             100,
+		inventory:        nil,
+		direction:        CHARACTLEFT,
+		frame:            0,
+		frameDelay:       0,
+		FRAME_HEIGHT:     32,
+		FRAME_WIDTH:      32,
+		action:           WALK,
+		imageYOffset:     0,
+		level:            levelmaps[1],
+		hitPoints:        1,
+		interactCooldown: COOLDOWN,
 	}
 
 	king := character{
-		spriteSheet:  enemySpriteSheet,
-		xLoc:         100,
-		yLoc:         200,
-		inventory:    nil,
-		direction:    CHARACTLEFT,
-		frame:        0,
-		frameDelay:   0,
-		FRAME_HEIGHT: 32,
-		FRAME_WIDTH:  32,
-		action:       WALK,
-		imageYOffset: 1,
-		level:        levelmaps[2],
-		hitPoints:    1,
+		spriteSheet:      enemySpriteSheet,
+		xLoc:             100,
+		yLoc:             200,
+		inventory:        nil,
+		direction:        CHARACTLEFT,
+		frame:            0,
+		frameDelay:       0,
+		FRAME_HEIGHT:     32,
+		FRAME_WIDTH:      32,
+		action:           WALK,
+		imageYOffset:     1,
+		level:            levelmaps[2],
+		hitPoints:        1,
+		interactCooldown: COOLDOWN,
 	}
 
 	leprechaun := character{
-		spriteSheet:  enemySpriteSheet,
-		xLoc:         300,
-		yLoc:         300,
-		inventory:    nil,
-		direction:    CHARACTRIGHT,
-		frame:        0,
-		frameDelay:   0,
-		FRAME_HEIGHT: 32,
-		FRAME_WIDTH:  32,
-		action:       WALK,
-		imageYOffset: 2,
-		level:        levelmaps[2],
-		hitPoints:    1,
+		spriteSheet:      enemySpriteSheet,
+		xLoc:             300,
+		yLoc:             300,
+		inventory:        nil,
+		direction:        CHARACTRIGHT,
+		frame:            0,
+		frameDelay:       0,
+		FRAME_HEIGHT:     32,
+		FRAME_WIDTH:      32,
+		action:           WALK,
+		imageYOffset:     2,
+		level:            levelmaps[2],
+		hitPoints:        1,
+		interactCooldown: COOLDOWN,
 	}
 	enemies := make([]character, 0, 5)
 	enemies = append(enemies, mannequin)
 	enemies = append(enemies, king)
 	enemies = append(enemies, leprechaun)
+
+	heartImage := grabHeartImage()
+	droppedItems := make([]item, 0, 10)
+	heart := HeartItem
+	heart.xLoc += 100
+	droppedItems = append(droppedItems, heart)
+	fmt.Printf("items: %d", droppedItems)
 
 	teleRectangles := map[uint32]image.Rectangle{}
 
@@ -416,6 +491,9 @@ func main() {
 		windowWidth:     windowX,
 		windowHeight:    windowY,
 		teleporterRects: teleRectangles,
+		heartImage:      heartImage,
+		font:            LoadScoreFont(),
+		droppedItems:    droppedItems,
 	}
 	err := ebiten.RunGame(&game)
 	if err != nil {
@@ -472,6 +550,14 @@ func makeEbitenImagesFromMap(tiledMap tiled.Map) map[uint32]*ebiten.Image {
 	return idToImage
 }
 
+func grabHeartImage() image.Image {
+	spriteSheet := LoadEmbeddedImage("", "objects.png")
+	subImageRect := image.Rect(63, 0, 79, 16)
+
+	subImage := ebiten.NewImageFromImage(spriteSheet).SubImage(subImageRect)
+	return subImage
+}
+
 func getPlayerInput(game *rpgGame) {
 	if ebiten.IsKeyPressed(ebiten.KeyA) {
 		game.player.direction = LEFT
@@ -482,6 +568,23 @@ func getPlayerInput(game *rpgGame) {
 	} else if ebiten.IsKeyPressed(ebiten.KeyS) {
 		game.player.direction = DOWN
 	}
+}
+
+func LoadScoreFont() font.Face {
+	//originally inspired by https://www.fatoldyeti.com/posts/roguelike16/
+	trueTypeFont, err := opentype.Parse(fonts.PressStart2P_ttf)
+	if err != nil {
+		fmt.Println("Error loading font for score:", err)
+	}
+	fontFace, err := opentype.NewFace(trueTypeFont, &opentype.FaceOptions{
+		Size:    60,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		fmt.Println("Error loading font of correct size for score:", err)
+	}
+	return fontFace
 }
 
 func DrawCenteredText(screen *ebiten.Image, font font.Face, s string, cx, cy int) { //from https://github.com/sedyh/ebitengine-cheatsheet
@@ -505,12 +608,7 @@ func addLabel(img *ebiten.Image, x, y int, label string) {
 }
 
 func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
-	playerBounds := collision.BoundingBox{
-		X:      float64(player.xLoc),
-		Y:      float64(player.yLoc),
-		Width:  float64(player.FRAME_WIDTH * resizeScale),
-		Height: float64(player.FRAME_HEIGHT * resizeScale),
-	}
+	playerBounds := player.getCollisionBoundingBox()
 
 	for _, border := range borderRects {
 		borderBounds := collision.BoundingBox{
@@ -527,12 +625,8 @@ func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
 }
 
 func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player *character) uint32 {
-	playerBounds := collision.BoundingBox{
-		X:      float64(player.xLoc),
-		Y:      float64(player.yLoc),
-		Width:  float64(player.FRAME_WIDTH * resizeScale),
-		Height: float64(player.FRAME_HEIGHT * resizeScale),
-	}
+	playerBounds := player.getCollisionBoundingBox()
+
 	for ID, teleporter := range teleporterRects {
 		teleporterBounds := collision.BoundingBox{
 			X:      float64(teleporter.Min.X * worldScale),
@@ -549,23 +643,16 @@ func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player
 
 func (player *character) playerInteractWithCheck(target *character) bool {
 	player.updatePlayerInteractRectangle()
-	targetBounds := collision.BoundingBox{
-		X:      float64(target.xLoc),
-		Y:      float64(target.yLoc),
-		Width:  float64(target.FRAME_WIDTH * resizeScale),
-		Height: float64(target.FRAME_HEIGHT * resizeScale),
-	}
-	playerBounds := collision.BoundingBox{
-		X:      float64(player.xLoc),
-		Y:      float64(player.yLoc),
-		Width:  float64(player.FRAME_WIDTH * resizeScale),
-		Height: float64(player.FRAME_HEIGHT * resizeScale),
-	}
+	fmt.Printf("%d", player.direction)
+	fmt.Printf("player X: %d, Y: %d\n", player.xLoc, player.yLoc)
+	fmt.Printf("itneractbox X: %d, Y: %d  width: %d, height: %d\n", player.interactRect.Min.X, player.interactRect.Min.Y, player.interactRect.Dx()*worldScale, player.interactRect.Dy()*worldScale)
+	targetBounds := target.getCollisionBoundingBox()
+	playerBounds := player.getCollisionBoundingBox()
 	playerInteractBounds := collision.BoundingBox{
 		X:      float64(player.interactRect.Min.X),
 		Y:      float64(player.interactRect.Min.Y),
-		Width:  float64(player.interactRect.Dx() * worldScale),
-		Height: float64(player.interactRect.Dy() * worldScale),
+		Width:  float64(player.interactRect.Dx()),
+		Height: float64(player.interactRect.Dy()),
 	}
 	if collision.AABBCollision(playerBounds, targetBounds) || collision.AABBCollision(playerInteractBounds, targetBounds) {
 		return true
@@ -577,17 +664,33 @@ func (player *character) updatePlayerInteractRectangle() {
 	//based on direction, change targetRectangle
 	switch player.direction {
 	case DOWN:
-		player.interactRect = image.Rect(player.xLoc, player.yLoc+player.FRAME_HEIGHT,
-			player.xLoc+player.FRAME_WIDTH, player.yLoc+player.FRAME_WIDTH)
+		player.interactRect = image.Rect(
+			player.xLoc,
+			player.yLoc+player.FRAME_HEIGHT*resizeScale,
+			player.xLoc+player.FRAME_WIDTH*resizeScale,
+			player.yLoc+player.FRAME_HEIGHT*resizeScale+player.FRAME_WIDTH,
+		)
 	case RIGHT:
-		player.interactRect = image.Rect(player.xLoc+player.FRAME_WIDTH, player.yLoc,
-			player.xLoc+player.FRAME_WIDTH, player.yLoc+player.FRAME_HEIGHT)
+		player.interactRect = image.Rect(
+			player.xLoc+player.FRAME_WIDTH*resizeScale,
+			player.yLoc,
+			player.xLoc+(player.FRAME_WIDTH*resizeScale*2),
+			player.yLoc+player.FRAME_HEIGHT,
+		)
 	case UP:
-		player.interactRect = image.Rect(player.xLoc, player.yLoc,
-			player.xLoc+player.FRAME_WIDTH, player.yLoc-player.FRAME_WIDTH)
+		player.interactRect = image.Rect(
+			player.xLoc,
+			player.yLoc,
+			player.xLoc+(player.FRAME_WIDTH*resizeScale),
+			player.yLoc-(player.FRAME_WIDTH*resizeScale)-player.FRAME_WIDTH,
+		)
 	case LEFT:
-		player.interactRect = image.Rect(player.xLoc, player.yLoc,
-			player.xLoc-player.FRAME_WIDTH, player.yLoc+player.FRAME_HEIGHT)
+		player.interactRect = image.Rect(
+			player.xLoc,
+			player.yLoc,
+			player.xLoc-player.FRAME_WIDTH*resizeScale,
+			player.yLoc+player.FRAME_HEIGHT,
+		)
 	}
 }
 
@@ -620,10 +723,118 @@ func (game *rpgGame) changeWorldMap(tileID uint32) {
 	game.teleporterRects = make(map[uint32]image.Rectangle)
 }
 
-func (character *character) death() {
+func (game *rpgGame) enemiesAttack() {
+	for i := range game.enemies {
+		if game.enemies[i].npcAttackBoundsCheck(&game.player) && game.enemies[i].interactCooldown < 0 {
+			if game.enemies[i].level == game.levelCurrent {
+				//damage player
+				playSound("playerhurt")
+				game.player.hitPoints--
+				game.enemies[i].interactCooldown = COOLDOWN
+			}
+		} else if game.enemies[i].interactCooldown > -10 {
+			game.enemies[i].interactCooldown--
+		}
+	}
 
 }
 
-func itemPickup() {
+func (npc *character) npcAttackBoundsCheck(player *character) bool {
+	player.updatePlayerInteractRectangle()
+	npcBounds := npc.getCollisionBoundingBox()
+	playerBounds := player.getCollisionBoundingBox()
 
+	if collision.AABBCollision(playerBounds, npcBounds) {
+		return true
+	}
+	return false
+}
+
+func (character *character) death(game *rpgGame) {
+	character.dropAllItems(game)
+	character.xLoc = -100
+	character.yLoc = -100
+	playSound("enemydeath")
+}
+
+func (game *rpgGame) itemsPickupCheck() {
+	for i := range game.droppedItems {
+		if game.player.isItemColliding(&game.droppedItems[i]) {
+			game.player.inventory = append(game.player.inventory, game.droppedItems[i])
+			game.removeDroppedItemAtIndex(i)
+		}
+	}
+}
+
+func (character *character) isItemColliding(item *item) bool {
+	itemBounds := collision.BoundingBox{
+		X:      float64(item.xLoc),
+		Y:      float64(item.yLoc),
+		Width:  float64(item.picture.Bounds().Dx() * resizeScale),
+		Height: float64(item.picture.Bounds().Dy() * resizeScale),
+	}
+	playerBounds := character.getCollisionBoundingBox()
+
+	if collision.AABBCollision(itemBounds, playerBounds) {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (game *rpgGame) removeDroppedItemAtIndex(index int) {
+	retained := make([]item, 0)
+	retained = append(retained, game.droppedItems[:index]...)
+	retained = append(retained, game.droppedItems[index+1:]...)
+	game.droppedItems = retained
+}
+
+func (character *character) getCollisionBoundingBox() collision.BoundingBox {
+	boundBox := collision.BoundingBox{
+		X:      float64(character.xLoc),
+		Y:      float64(character.yLoc),
+		Width:  float64(character.FRAME_WIDTH * resizeScale),
+		Height: float64(character.FRAME_HEIGHT * resizeScale),
+	}
+	return boundBox
+}
+
+func (character *character) dropAllItems(game *rpgGame) {
+	for i := range character.inventory {
+		character.dropItem(game, i)
+	}
+	character.dropItem(game, -1)
+}
+
+func (character *character) dropItem(game *rpgGame, itemIndex int) {
+	//character.inventory[itemIndex] = nil
+	heart := HeartItem
+	heart.xLoc = character.xLoc + 10
+	heart.yLoc = character.yLoc + 20
+	if itemIndex < 0 {
+		game.droppedItems = append(game.droppedItems, heart)
+	} else {
+		game.droppedItems = append(game.droppedItems, character.inventory[itemIndex])
+		character.removeInventoryItemAtIndex(itemIndex)
+	}
+}
+
+func (character *character) removeInventoryItemAtIndex(index int) {
+	retained := make([]item, 0)
+	retained = append(retained, character.inventory[:index]...)
+	retained = append(retained, character.inventory[index+1:]...)
+	character.inventory = retained
+}
+
+func playSound(s string) {
+
+}
+
+func (character *character) convertHeartItemsToHealth() {
+	for i := range character.inventory {
+		if character.inventory[i].displayName == "Heart" {
+			character.removeInventoryItemAtIndex(i)
+			character.hitPoints++
+		}
+	}
 }
