@@ -25,11 +25,9 @@ import (
 var EmbeddedAssets embed.FS
 
 const (
-	FRAMES_PER_ROW = 4
-	FRAME_COUNT    = 8
-	resizeScale    = 3
-	worldScale     = 3
-	COOLDOWN       = 60
+	resizeScale = 3
+	worldScale  = 3
+	COOLDOWN    = 60
 )
 
 const (
@@ -68,7 +66,8 @@ type rpgGame struct {
 	player          character
 	enemies         []character
 	questGiver      character
-	font            font.Face
+	fontLarge       font.Face
+	fontSmall       font.Face
 	heartImage      image.Image
 	droppedItems    []item
 }
@@ -103,10 +102,19 @@ type item struct {
 }
 
 var HeartItem = item{
-	picture:          grabHeartImage(),
+	picture:          grabItemImage(63, 0, 16, 16),
 	displayName:      "Heart",
 	xLoc:             400,
 	yLoc:             100,
+	yAnimationOffset: 0,
+	delay:            0,
+}
+
+var BookItem = item{
+	picture:          grabItemImage(304, 0, 16, 16),
+	displayName:      "Book",
+	xLoc:             500,
+	yLoc:             500,
 	yAnimationOffset: 0,
 	delay:            0,
 }
@@ -152,7 +160,8 @@ func (game *rpgGame) Update() error {
 			if game.player.questProgress == NOTTALKED {
 				game.player.questProgress = TALKED
 				//display quest text
-			} else if game.player.questProgress == TALKED { //AND H IASTEM
+
+			} else if game.player.questProgress == TALKED && game.player.questCheckForBook() { //AND H IASTEM
 				game.player.questProgress = RETURNEDITEM
 				//display a thank you
 				//take item from player inventory
@@ -166,18 +175,23 @@ func (game *rpgGame) Update() error {
 	game.enemiesAttack()
 
 	for i := range game.enemies {
-		if game.enemies[i].action == WALK {
-			game.enemies[i].frameDelay += 1
-			if game.enemies[i].frameDelay%8 == 0 {
-				game.enemies[i].frame += 1
-				if game.enemies[i].frame >= 4 {
-					game.enemies[i].frame = 0
-				}
+		game.enemies[i].animateCharacter()
+	}
+	game.questGiver.animateCharacter()
+
+	return nil
+}
+
+func (character *character) animateCharacter() {
+	if character.action == WALK {
+		character.frameDelay += 1
+		if character.frameDelay%8 == 0 {
+			character.frame += 1
+			if character.frame >= 4 {
+				character.frame = 0
 			}
 		}
 	}
-
-	return nil
 }
 
 func (game *rpgGame) movePlayer(location *int) {
@@ -269,6 +283,9 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 			drawImageFromSpriteSheet(op, screen, charact)
 		}
 	}
+	if game.questGiver.level == game.levelCurrent {
+		drawImageFromSpriteSheet(op, screen, game.questGiver)
+	}
 
 	for _, item := range game.droppedItems {
 		op.GeoM.Reset()
@@ -278,14 +295,17 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	}
 
 	game.drawPlayerHealth(op, screen)
-
-	img := ebiten.NewImage(300, 100)
-	addLabel(img, 20, 30, "Hello Go")
-	op.GeoM.Reset()
-	screen.DrawImage(img, op)
+	if game.questGiver.level == game.levelCurrent {
+		switch game.player.questProgress {
+		case TALKED:
+			DrawCenteredText(screen, game.fontSmall, "My brother stole my book,\nplease get it back!", 250, 100)
+		case RETURNEDITEM:
+			DrawCenteredText(screen, game.fontSmall, "Thank You!", 250, 100)
+		}
+	}
 
 	if game.player.hitPoints <= 0 {
-		DrawCenteredText(screen, game.font, "GAME OVER", game.windowHeight/2, game.windowWidth/2)
+		DrawCenteredText(screen, game.fontLarge, "GAME OVER", game.windowHeight/2, game.windowWidth/2)
 	}
 }
 
@@ -393,7 +413,7 @@ func main() {
 	windowX := gameMap.TileWidth * gameMap.Width * worldScale
 	windowY := gameMap.TileHeight * gameMap.Height * worldScale
 	ebiten.SetWindowSize(windowX, windowY)
-	fmt.Printf("windowWidth: %d, windowHeight: %d", windowX, windowY)
+	fmt.Printf("windowWidth: %d, windowHeight: %d\n", windowX, windowY)
 
 	playerSpriteSheet := LoadEmbeddedImage("characters", "player.png")
 	enemySpriteSheet := LoadEmbeddedImage("characters", "characters.png")
@@ -413,12 +433,31 @@ func main() {
 		questProgress:    NOTTALKED,
 		interactCooldown: COOLDOWN / 2,
 	}
+	questGiver := character{
+		spriteSheet:      enemySpriteSheet,
+		xLoc:             200,
+		yLoc:             100,
+		inventory:        nil,
+		direction:        CHARACTLEFT,
+		frame:            0,
+		frameDelay:       0,
+		FRAME_HEIGHT:     32,
+		FRAME_WIDTH:      32,
+		action:           WALK,
+		imageYOffset:     0,
+		level:            levelmaps[2],
+		hitPoints:        1,
+		interactCooldown: COOLDOWN,
+	}
+
+	mannequinInventory := make([]item, 0)
+	mannequinInventory = append(mannequinInventory, BookItem)
 
 	mannequin := character{
 		spriteSheet:      enemySpriteSheet,
 		xLoc:             100,
 		yLoc:             100,
-		inventory:        nil,
+		inventory:        mannequinInventory,
 		direction:        CHARACTLEFT,
 		frame:            0,
 		frameDelay:       0,
@@ -443,7 +482,7 @@ func main() {
 		FRAME_WIDTH:      32,
 		action:           WALK,
 		imageYOffset:     1,
-		level:            levelmaps[2],
+		level:            levelmaps[0],
 		hitPoints:        1,
 		interactCooldown: COOLDOWN,
 	}
@@ -460,7 +499,7 @@ func main() {
 		FRAME_WIDTH:      32,
 		action:           WALK,
 		imageYOffset:     2,
-		level:            levelmaps[2],
+		level:            levelmaps[0],
 		hitPoints:        1,
 		interactCooldown: COOLDOWN,
 	}
@@ -469,12 +508,13 @@ func main() {
 	enemies = append(enemies, king)
 	enemies = append(enemies, leprechaun)
 
-	heartImage := grabHeartImage()
+	heartImage := grabItemImage(63, 0, 16, 16)
 	droppedItems := make([]item, 0, 10)
 	heart := HeartItem
-	heart.xLoc += 100
 	droppedItems = append(droppedItems, heart)
-	fmt.Printf("items: %d", droppedItems)
+	//book := BookItem
+	//droppedItems = append(droppedItems, book)
+	fmt.Printf("items: %d\n", droppedItems)
 
 	teleRectangles := map[uint32]image.Rectangle{}
 
@@ -492,8 +532,10 @@ func main() {
 		windowHeight:    windowY,
 		teleporterRects: teleRectangles,
 		heartImage:      heartImage,
-		font:            LoadScoreFont(),
+		fontLarge:       LoadScoreFont(60),
+		fontSmall:       LoadScoreFont(16),
 		droppedItems:    droppedItems,
+		questGiver:      questGiver,
 	}
 	err := ebiten.RunGame(&game)
 	if err != nil {
@@ -550,9 +592,9 @@ func makeEbitenImagesFromMap(tiledMap tiled.Map) map[uint32]*ebiten.Image {
 	return idToImage
 }
 
-func grabHeartImage() image.Image {
+func grabItemImage(startX, startY, width, height int) image.Image {
 	spriteSheet := LoadEmbeddedImage("", "objects.png")
-	subImageRect := image.Rect(63, 0, 79, 16)
+	subImageRect := image.Rect(startX, startY, startX+width, startY+height)
 
 	subImage := ebiten.NewImageFromImage(spriteSheet).SubImage(subImageRect)
 	return subImage
@@ -570,14 +612,14 @@ func getPlayerInput(game *rpgGame) {
 	}
 }
 
-func LoadScoreFont() font.Face {
+func LoadScoreFont(size float64) font.Face {
 	//originally inspired by https://www.fatoldyeti.com/posts/roguelike16/
 	trueTypeFont, err := opentype.Parse(fonts.PressStart2P_ttf)
 	if err != nil {
 		fmt.Println("Error loading font for score:", err)
 	}
 	fontFace, err := opentype.NewFace(trueTypeFont, &opentype.FaceOptions{
-		Size:    60,
+		Size:    size,
 		DPI:     72,
 		Hinting: font.HintingFull,
 	})
@@ -605,6 +647,11 @@ func addLabel(img *ebiten.Image, x, y int, label string) {
 		Dot:  point,
 	}
 	d.DrawString(label)
+	//usage
+	//img := ebiten.NewImage(300, 100)
+	//addLabel(img, 20, 30, "Hello Go")
+	//op.GeoM.Reset()
+	//screen.DrawImage(img, op)
 }
 
 func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
@@ -758,12 +805,15 @@ func (character *character) death(game *rpgGame) {
 }
 
 func (game *rpgGame) itemsPickupCheck() {
+	newDroppedItems := make([]item, 0)
 	for i := range game.droppedItems {
 		if game.player.isItemColliding(&game.droppedItems[i]) {
 			game.player.inventory = append(game.player.inventory, game.droppedItems[i])
-			game.removeDroppedItemAtIndex(i)
+		} else {
+			newDroppedItems = append(newDroppedItems, game.droppedItems[i])
 		}
 	}
+	game.droppedItems = newDroppedItems
 }
 
 func (character *character) isItemColliding(item *item) bool {
@@ -780,13 +830,6 @@ func (character *character) isItemColliding(item *item) bool {
 	} else {
 		return false
 	}
-}
-
-func (game *rpgGame) removeDroppedItemAtIndex(index int) {
-	retained := make([]item, 0)
-	retained = append(retained, game.droppedItems[:index]...)
-	retained = append(retained, game.droppedItems[index+1:]...)
-	game.droppedItems = retained
 }
 
 func (character *character) getCollisionBoundingBox() collision.BoundingBox {
@@ -808,33 +851,63 @@ func (character *character) dropAllItems(game *rpgGame) {
 
 func (character *character) dropItem(game *rpgGame, itemIndex int) {
 	//character.inventory[itemIndex] = nil
-	heart := HeartItem
-	heart.xLoc = character.xLoc + 10
-	heart.yLoc = character.yLoc + 20
 	if itemIndex < 0 {
+		heart := HeartItem
+		heart.xLoc = character.xLoc + 10
+		heart.yLoc = character.yLoc + 20
 		game.droppedItems = append(game.droppedItems, heart)
 	} else {
-		game.droppedItems = append(game.droppedItems, character.inventory[itemIndex])
+		droppedItem := character.inventory[itemIndex]
+		droppedItem.xLoc = character.xLoc + 20
+		droppedItem.yLoc = character.yLoc + 30
+		game.droppedItems = append(game.droppedItems, droppedItem)
 		character.removeInventoryItemAtIndex(itemIndex)
 	}
 }
 
+func (character *character) getItemIndex(itemName string) int {
+	for i := range character.inventory {
+		if character.inventory[i].displayName == itemName {
+			return i
+		}
+	}
+	return -1
+}
+
+func (character *character) questCheckForBook() bool {
+	index := character.getItemIndex(BookItem.displayName)
+	if index != -1 {
+		character.removeInventoryItemAtIndex(index)
+		return true
+	}
+	return false
+}
+
 func (character *character) removeInventoryItemAtIndex(index int) {
 	retained := make([]item, 0)
-	retained = append(retained, character.inventory[:index]...)
-	retained = append(retained, character.inventory[index+1:]...)
+	for i := range character.inventory {
+		if i != index {
+			retained = append(retained, character.inventory[i])
+		}
+	}
 	character.inventory = retained
 }
 
 func playSound(s string) {
-
+	fmt.Println(s)
 }
 
 func (character *character) convertHeartItemsToHealth() {
+	indexToRemove := 0
+	remove := false
 	for i := range character.inventory {
 		if character.inventory[i].displayName == "Heart" {
-			character.removeInventoryItemAtIndex(i)
+			indexToRemove = i
+			remove = true
 			character.hitPoints++
 		}
+	}
+	if remove {
+		character.removeInventoryItemAtIndex(indexToRemove)
 	}
 }
