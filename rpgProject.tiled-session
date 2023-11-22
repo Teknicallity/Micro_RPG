@@ -3,44 +3,46 @@
         "height": 4300,
         "width": 2
     },
-    "activeFile": "assets/world.tmx",
+    "activeFile": "assets/dirt.tmx",
     "expandedProjectPaths": [
         "assets",
         "."
     ],
     "fileStates": {
         "assets/dirt.tmx": {
-            "scale": 3.768333333333333,
+            "scale": 3,
             "selectedLayer": 0,
             "viewCenter": {
-                "x": 122.20256523662096,
-                "y": 119.9469261388766
+                "x": 107.66666666666664,
+                "y": 119
             }
         },
         "assets/dirt.tmx#overworld": {
-            "scaleInDock": 1
+            "scaleInDock": 2,
+            "scaleInEditor": 1
         },
         "assets/island.tmx": {
             "scale": 3.768333333333333,
             "selectedLayer": 1,
             "viewCenter": {
                 "x": 119.81424148606811,
-                "y": 119.68155683325962
+                "y": 118.88544891640868
             }
         },
         "assets/island.tmx#overworld": {
-            "scaleInDock": 4
+            "scaleInDock": 4,
+            "scaleInEditor": 1
         },
         "assets/world.tmx": {
             "scale": 3.768333333333333,
-            "selectedLayer": 0,
+            "selectedLayer": 1,
             "viewCenter": {
-                "x": 119.54887218045116,
-                "y": 117.29323308270676
+                "x": 119.15081822202565,
+                "y": 117.02786377708978
             }
         },
         "assets/world.tmx#overworld": {
-            "scaleInDock": 1.5
+            "scaleInDock": 2
         },
         "world.tmx": {
             "scale": 1.8841666666666665,
@@ -62,12 +64,14 @@
     "map.width": 15,
     "openFiles": [
         "assets/world.tmx",
-        "assets/island.tmx"
+        "assets/island.tmx",
+        "assets/dirt.tmx"
     ],
     "project": "rpgProject.tiled-project",
     "recentFiles": [
         "assets/world.tmx",
-        "assets/island.tmx"
+        "assets/island.tmx",
+        "assets/dirt.tmx"
     ],
     "tileset.embedInMap": true,
     "tileset.tileSize": {

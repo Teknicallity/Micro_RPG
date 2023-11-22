@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/co0p/tankism/lib/collision"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -19,15 +21,17 @@ import (
 	"log"
 	"path"
 	"slices"
+	"strconv"
 )
 
 //go:embed assets/*
 var EmbeddedAssets embed.FS
 
 const (
-	resizeScale = 3
-	worldScale  = 3
-	COOLDOWN    = 60
+	resizeScale     = 3
+	worldScale      = 3
+	COOLDOWN        = 60
+	soundSampleRate = 48000
 )
 
 const (
@@ -70,6 +74,7 @@ type rpgGame struct {
 	fontSmall       font.Face
 	heartImage      image.Image
 	droppedItems    []item
+	sounds          sounds
 }
 
 type character struct {
@@ -90,6 +95,7 @@ type character struct {
 	interactRect     image.Rectangle
 	interactCooldown int
 	questProgress    int
+	attackPower      int
 }
 
 type item struct {
@@ -99,6 +105,48 @@ type item struct {
 	yLoc             int
 	yAnimationOffset int
 	delay            int
+}
+
+type sounds struct {
+	enemyDeath     sound
+	enemyHit       sound
+	attackPowerUp  sound
+	heal           sound
+	playerInteract sound
+	playerDamaged  sound
+	questGiverTalk sound
+	itemPickup     sound
+
+	audioContext *audio.Context
+}
+
+type sound struct {
+	audioPlayer *audio.Player
+}
+
+func (sound *sound) playSound() {
+	//sound.
+	err := sound.audioPlayer.Rewind()
+	if err != nil {
+		fmt.Println("Error rewinding sound: ", err)
+	}
+	sound.audioPlayer.Play()
+}
+
+func loadEmbeddedWavToSound(name string, context *audio.Context) sound {
+	file, err := EmbeddedAssets.Open(path.Join("assets", "sounds", name))
+	if err != nil {
+		fmt.Println("Error Loading embedded sound: ", err)
+	}
+	soundWav, err := wav.DecodeWithoutResampling(file)
+	if err != nil {
+		fmt.Println("Error interpreting sound file: ", err)
+	}
+	soundPlay, err := context.NewPlayer(soundWav)
+	if err != nil {
+		fmt.Println("Couldn't create sound player: ", err)
+	}
+	return sound{soundPlay}
 }
 
 var HeartItem = item{
@@ -114,6 +162,15 @@ var BookItem = item{
 	picture:          grabItemImage(304, 0, 16, 16),
 	displayName:      "Book",
 	xLoc:             500,
+	yLoc:             500,
+	yAnimationOffset: 0,
+	delay:            0,
+}
+
+var StoneItem = item{
+	picture:          grabItemImage(256, 16, 16, 16),
+	displayName:      "Stone",
+	xLoc:             200,
 	yLoc:             500,
 	yAnimationOffset: 0,
 	delay:            0,
@@ -142,14 +199,18 @@ func (game *rpgGame) Update() error {
 	game.outOfBoundsCheck()
 	//fmt.Printf("x: %d, y: %d\n", game.player.xLoc, game.player.yLoc)
 	game.itemsPickupCheck()
-	game.player.convertHeartItemsToHealth()
+	if game.player.convertHeartItemsToHealth() {
+		game.sounds.heal.playSound()
+	}
 
 	if game.player.action == INTERACT && game.player.interactCooldown < 0 {
+		game.sounds.playerInteract.playSound()
 		game.player.interactCooldown = COOLDOWN
 		for i := range game.enemies {
 			if game.enemies[i].level == game.levelCurrent {
 				if game.player.playerInteractWithCheck(&game.enemies[i]) {
-					game.enemies[i].hitPoints--
+					game.enemies[i].hitPoints -= game.player.attackPower
+					game.sounds.enemyHit.playSound()
 					if game.enemies[i].hitPoints == 0 {
 						game.enemies[i].death(game)
 					}
@@ -160,11 +221,11 @@ func (game *rpgGame) Update() error {
 			if game.player.questProgress == NOTTALKED {
 				game.player.questProgress = TALKED
 				//display quest text
-
+				game.sounds.questGiverTalk.playSound()
 			} else if game.player.questProgress == TALKED && game.player.questCheckForBook() { //AND H IASTEM
 				game.player.questProgress = RETURNEDITEM
-				//display a thank you
-				//take item from player inventory
+				game.player.attackPower++
+				game.sounds.attackPowerUp.playSound()
 			} else if game.player.questProgress == RETURNEDITEM {
 				//display another thank you message?
 			}
@@ -298,11 +359,17 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	if game.questGiver.level == game.levelCurrent {
 		switch game.player.questProgress {
 		case TALKED:
-			DrawCenteredText(screen, game.fontSmall, "My brother stole my book,\nplease get it back!", 250, 100)
+			DrawCenteredText(screen, game.fontSmall, "My brother stole my book,\n   please get it back!",
+				game.questGiver.xLoc+45, game.questGiver.yLoc)
+
 		case RETURNEDITEM:
-			DrawCenteredText(screen, game.fontSmall, "Thank You!", 250, 100)
+			DrawCenteredText(screen, game.fontSmall, "  Thank You!\nI've blessed you\n  with strength",
+				game.questGiver.xLoc+45, game.questGiver.yLoc)
 		}
 	}
+
+	DrawCenteredText(screen, game.fontSmall, "Power:", 50, 700)
+	DrawCenteredText(screen, game.fontSmall, strconv.Itoa(game.player.attackPower), 120, 700)
 
 	if game.player.hitPoints <= 0 {
 		DrawCenteredText(screen, game.fontLarge, "GAME OVER", game.windowHeight/2, game.windowWidth/2)
@@ -395,6 +462,19 @@ func (game *rpgGame) Layout(outsideWidth, outsideHeight int) (screenWidth, scree
 func main() {
 	ebiten.SetWindowTitle("SimpleRPG")
 
+	soundContext := audio.NewContext(soundSampleRate)
+
+	snds := sounds{
+		enemyDeath:     loadEmbeddedWavToSound("enemyDeath.wav", soundContext),
+		enemyHit:       loadEmbeddedWavToSound("enemyHit.wav", soundContext),
+		attackPowerUp:  loadEmbeddedWavToSound("attackPowerUp.wav", soundContext),
+		heal:           loadEmbeddedWavToSound("heal.wav", soundContext),
+		playerInteract: loadEmbeddedWavToSound("playerInteract.wav", soundContext),
+		playerDamaged:  loadEmbeddedWavToSound("playerDamaged.wav", soundContext),
+		questGiverTalk: loadEmbeddedWavToSound("questGiverTalk.wav", soundContext),
+		itemPickup:     loadEmbeddedWavToSound("itemPickup.wav", soundContext),
+	}
+
 	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
 	levelmaps := make([]*tiled.Map, 0, 5)
 	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx"))
@@ -420,8 +500,8 @@ func main() {
 
 	user := character{
 		spriteSheet:      playerSpriteSheet,
-		xLoc:             250,
-		yLoc:             250,
+		xLoc:             400,
+		yLoc:             400,
 		direction:        RIGHT,
 		frame:            0,
 		frameDelay:       0,
@@ -432,11 +512,12 @@ func main() {
 		hitPoints:        3,
 		questProgress:    NOTTALKED,
 		interactCooldown: COOLDOWN / 2,
+		attackPower:      1,
 	}
 	questGiver := character{
 		spriteSheet:      enemySpriteSheet,
 		xLoc:             200,
-		yLoc:             100,
+		yLoc:             150,
 		inventory:        nil,
 		direction:        CHARACTLEFT,
 		frame:            0,
@@ -466,8 +547,9 @@ func main() {
 		action:           WALK,
 		imageYOffset:     0,
 		level:            levelmaps[1],
-		hitPoints:        1,
+		hitPoints:        2,
 		interactCooldown: COOLDOWN,
+		attackPower:      1,
 	}
 
 	king := character{
@@ -483,8 +565,9 @@ func main() {
 		action:           WALK,
 		imageYOffset:     1,
 		level:            levelmaps[0],
-		hitPoints:        1,
+		hitPoints:        2,
 		interactCooldown: COOLDOWN,
+		attackPower:      1,
 	}
 
 	leprechaun := character{
@@ -500,8 +583,9 @@ func main() {
 		action:           WALK,
 		imageYOffset:     2,
 		level:            levelmaps[0],
-		hitPoints:        1,
+		hitPoints:        2,
 		interactCooldown: COOLDOWN,
+		attackPower:      1,
 	}
 	enemies := make([]character, 0, 5)
 	enemies = append(enemies, mannequin)
@@ -512,8 +596,8 @@ func main() {
 	droppedItems := make([]item, 0, 10)
 	heart := HeartItem
 	droppedItems = append(droppedItems, heart)
-	//book := BookItem
-	//droppedItems = append(droppedItems, book)
+	stone := StoneItem
+	droppedItems = append(droppedItems, stone)
 	fmt.Printf("items: %d\n", droppedItems)
 
 	teleRectangles := map[uint32]image.Rectangle{}
@@ -536,6 +620,7 @@ func main() {
 		fontSmall:       LoadScoreFont(16),
 		droppedItems:    droppedItems,
 		questGiver:      questGiver,
+		sounds:          snds,
 	}
 	err := ebiten.RunGame(&game)
 	if err != nil {
@@ -775,8 +860,8 @@ func (game *rpgGame) enemiesAttack() {
 		if game.enemies[i].npcAttackBoundsCheck(&game.player) && game.enemies[i].interactCooldown < 0 {
 			if game.enemies[i].level == game.levelCurrent {
 				//damage player
-				playSound("playerhurt")
-				game.player.hitPoints--
+				game.sounds.playerDamaged.playSound()
+				game.player.hitPoints -= game.enemies[i].attackPower
 				game.enemies[i].interactCooldown = COOLDOWN
 			}
 		} else if game.enemies[i].interactCooldown > -10 {
@@ -801,7 +886,7 @@ func (character *character) death(game *rpgGame) {
 	character.dropAllItems(game)
 	character.xLoc = -100
 	character.yLoc = -100
-	playSound("enemydeath")
+	game.sounds.enemyDeath.playSound()
 }
 
 func (game *rpgGame) itemsPickupCheck() {
@@ -809,6 +894,9 @@ func (game *rpgGame) itemsPickupCheck() {
 	for i := range game.droppedItems {
 		if game.player.isItemColliding(&game.droppedItems[i]) {
 			game.player.inventory = append(game.player.inventory, game.droppedItems[i])
+			if game.droppedItems[i].displayName != "Heart" {
+				game.sounds.itemPickup.playSound()
+			}
 		} else {
 			newDroppedItems = append(newDroppedItems, game.droppedItems[i])
 		}
@@ -853,13 +941,13 @@ func (character *character) dropItem(game *rpgGame, itemIndex int) {
 	//character.inventory[itemIndex] = nil
 	if itemIndex < 0 {
 		heart := HeartItem
-		heart.xLoc = character.xLoc + 10
+		heart.xLoc = character.xLoc + 20
 		heart.yLoc = character.yLoc + 20
 		game.droppedItems = append(game.droppedItems, heart)
 	} else {
 		droppedItem := character.inventory[itemIndex]
-		droppedItem.xLoc = character.xLoc + 20
-		droppedItem.yLoc = character.yLoc + 30
+		droppedItem.xLoc = character.xLoc + 40
+		droppedItem.yLoc = character.yLoc + 40
 		game.droppedItems = append(game.droppedItems, droppedItem)
 		character.removeInventoryItemAtIndex(itemIndex)
 	}
@@ -897,7 +985,7 @@ func playSound(s string) {
 	fmt.Println(s)
 }
 
-func (character *character) convertHeartItemsToHealth() {
+func (character *character) convertHeartItemsToHealth() bool {
 	indexToRemove := 0
 	remove := false
 	for i := range character.inventory {
@@ -905,9 +993,11 @@ func (character *character) convertHeartItemsToHealth() {
 			indexToRemove = i
 			remove = true
 			character.hitPoints++
+			break
 		}
 	}
 	if remove {
 		character.removeInventoryItemAtIndex(indexToRemove)
 	}
+	return remove
 }
