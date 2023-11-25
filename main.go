@@ -13,11 +13,8 @@ import (
 	"github.com/lafriks/go-tiled"
 	"golang.org/x/image/colornames"
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/font/opentype"
-	"golang.org/x/image/math/fixed"
 	"image"
-	"image/color"
 	"log"
 	"path"
 	"slices"
@@ -77,36 +74,6 @@ type rpgGame struct {
 	sounds          sounds
 }
 
-type character struct {
-	spriteSheet      *ebiten.Image
-	xLoc             int
-	yLoc             int
-	hitPoints        int
-	inventory        []item
-	direction        int
-	frame            int
-	frameDelay       int
-	FRAME_HEIGHT     int
-	FRAME_WIDTH      int
-	action           int
-	imageYOffset     int
-	speed            int
-	level            *tiled.Map
-	interactRect     image.Rectangle
-	interactCooldown int
-	questProgress    int
-	attackPower      int
-}
-
-type item struct {
-	picture          image.Image
-	displayName      string
-	xLoc             int
-	yLoc             int
-	yAnimationOffset int
-	delay            int
-}
-
 type sounds struct {
 	enemyDeath     sound
 	enemyHit       sound
@@ -147,33 +114,6 @@ func loadEmbeddedWavToSound(name string, context *audio.Context) sound {
 		fmt.Println("Couldn't create sound player: ", err)
 	}
 	return sound{soundPlay}
-}
-
-var HeartItem = item{
-	picture:          grabItemImage(63, 0, 16, 16),
-	displayName:      "Heart",
-	xLoc:             400,
-	yLoc:             100,
-	yAnimationOffset: 0,
-	delay:            0,
-}
-
-var BookItem = item{
-	picture:          grabItemImage(304, 0, 16, 16),
-	displayName:      "Book",
-	xLoc:             500,
-	yLoc:             500,
-	yAnimationOffset: 0,
-	delay:            0,
-}
-
-var StoneItem = item{
-	picture:          grabItemImage(256, 16, 16, 16),
-	displayName:      "Stone",
-	xLoc:             200,
-	yLoc:             500,
-	yAnimationOffset: 0,
-	delay:            0,
 }
 
 func (game *rpgGame) Update() error {
@@ -349,10 +289,12 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	}
 
 	for _, item := range game.droppedItems {
-		op.GeoM.Reset()
-		op.GeoM.Scale(resizeScale-1, resizeScale-1)
-		op.GeoM.Translate(float64(item.xLoc), float64(item.yLoc-item.yAnimationOffset))
-		screen.DrawImage(item.picture.(*ebiten.Image), op)
+		if item.level == game.levelCurrent {
+			op.GeoM.Reset()
+			op.GeoM.Scale(resizeScale-1, resizeScale-1)
+			op.GeoM.Translate(float64(item.xLoc), float64(item.yLoc-item.yAnimationOffset))
+			screen.DrawImage(item.picture.(*ebiten.Image), op)
+		}
 	}
 
 	game.drawPlayerHealth(op, screen)
@@ -445,16 +387,6 @@ func (game *rpgGame) animateDroppedItems() {
 	}
 }
 
-func (item *item) itemAnimate() {
-	item.delay++
-	if item.delay%6 == 0 {
-		item.yAnimationOffset++
-		if item.yAnimationOffset > 5 {
-			item.yAnimationOffset = 0
-		}
-	}
-}
-
 func (game *rpgGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return outsideWidth, outsideHeight //by default, just return the current dimensions
 }
@@ -477,15 +409,15 @@ func main() {
 
 	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
 	levelmaps := make([]*tiled.Map, 0, 5)
-	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx"))
+	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx")) //0
 	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
 	levelmaps = append(levelmaps, gameMap)
 	tileMapHashes = append(tileMapHashes, ebitenImageMap)
-	gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx"))
+	gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx")) //1
 	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
 	levelmaps = append(levelmaps, gameMap)
 	tileMapHashes = append(tileMapHashes, ebitenImageMap)
-	gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx"))
+	gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx")) //2
 	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
 	levelmaps = append(levelmaps, gameMap)
 	tileMapHashes = append(tileMapHashes, ebitenImageMap)
@@ -595,8 +527,10 @@ func main() {
 	heartImage := grabItemImage(63, 0, 16, 16)
 	droppedItems := make([]item, 0, 10)
 	heart := HeartItem
+	heart.level = levelmaps[2]
 	droppedItems = append(droppedItems, heart)
 	stone := StoneItem
+	stone.level = levelmaps[2]
 	droppedItems = append(droppedItems, stone)
 	fmt.Printf("items: %d\n", droppedItems)
 
@@ -720,24 +654,24 @@ func DrawCenteredText(screen *ebiten.Image, font font.Face, s string, cx, cy int
 	text.Draw(screen, s, font, x, y, colornames.White)
 }
 
-func addLabel(img *ebiten.Image, x, y int, label string) {
-	// from https://stackoverflow.com/a/38300583
-	col := color.RGBA{200, 100, 0, 255}
-	point := fixed.Point26_6{fixed.I(x), fixed.I(y)}
-
-	d := &font.Drawer{
-		Dst:  img,
-		Src:  image.NewUniform(col),
-		Face: basicfont.Face7x13,
-		Dot:  point,
-	}
-	d.DrawString(label)
-	//usage
-	//img := ebiten.NewImage(300, 100)
-	//addLabel(img, 20, 30, "Hello Go")
-	//op.GeoM.Reset()
-	//screen.DrawImage(img, op)
-}
+//func addLabel(img *ebiten.Image, x, y int, label string) {
+//	// from https://stackoverflow.com/a/38300583
+//	col := color.RGBA{200, 100, 0, 255}
+//	point := fixed.Point26_6{fixed.I(x), fixed.I(y)}
+//
+//	d := &font.Drawer{
+//		Dst:  img,
+//		Src:  image.NewUniform(col),
+//		Face: basicfont.Face7x13,
+//		Dot:  point,
+//	}
+//	d.DrawString(label)
+//	//usage
+//	//img := ebiten.NewImage(300, 100)
+//	//addLabel(img, 20, 30, "Hello Go")
+//	//op.GeoM.Reset()
+//	//screen.DrawImage(img, op)
+//}
 
 func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
 	playerBounds := player.getCollisionBoundingBox()
@@ -773,59 +707,6 @@ func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player
 	return 0
 }
 
-func (player *character) playerInteractWithCheck(target *character) bool {
-	player.updatePlayerInteractRectangle()
-	fmt.Printf("%d", player.direction)
-	fmt.Printf("player X: %d, Y: %d\n", player.xLoc, player.yLoc)
-	fmt.Printf("itneractbox X: %d, Y: %d  width: %d, height: %d\n", player.interactRect.Min.X, player.interactRect.Min.Y, player.interactRect.Dx()*worldScale, player.interactRect.Dy()*worldScale)
-	targetBounds := target.getCollisionBoundingBox()
-	playerBounds := player.getCollisionBoundingBox()
-	playerInteractBounds := collision.BoundingBox{
-		X:      float64(player.interactRect.Min.X),
-		Y:      float64(player.interactRect.Min.Y),
-		Width:  float64(player.interactRect.Dx()),
-		Height: float64(player.interactRect.Dy()),
-	}
-	if collision.AABBCollision(playerBounds, targetBounds) || collision.AABBCollision(playerInteractBounds, targetBounds) {
-		return true
-	}
-	return false
-}
-
-func (player *character) updatePlayerInteractRectangle() {
-	//based on direction, change targetRectangle
-	switch player.direction {
-	case DOWN:
-		player.interactRect = image.Rect(
-			player.xLoc,
-			player.yLoc+player.FRAME_HEIGHT*resizeScale,
-			player.xLoc+player.FRAME_WIDTH*resizeScale,
-			player.yLoc+player.FRAME_HEIGHT*resizeScale+player.FRAME_WIDTH,
-		)
-	case RIGHT:
-		player.interactRect = image.Rect(
-			player.xLoc+player.FRAME_WIDTH*resizeScale,
-			player.yLoc,
-			player.xLoc+(player.FRAME_WIDTH*resizeScale*2),
-			player.yLoc+player.FRAME_HEIGHT,
-		)
-	case UP:
-		player.interactRect = image.Rect(
-			player.xLoc,
-			player.yLoc,
-			player.xLoc+(player.FRAME_WIDTH*resizeScale),
-			player.yLoc-(player.FRAME_WIDTH*resizeScale)-player.FRAME_WIDTH,
-		)
-	case LEFT:
-		player.interactRect = image.Rect(
-			player.xLoc,
-			player.yLoc,
-			player.xLoc-player.FRAME_WIDTH*resizeScale,
-			player.yLoc+player.FRAME_HEIGHT,
-		)
-	}
-}
-
 //if tileID ==1 change to x map  playerpositionX-screen absolute value
 
 func (game *rpgGame) changeWorldMap(tileID uint32) {
@@ -857,7 +738,7 @@ func (game *rpgGame) changeWorldMap(tileID uint32) {
 
 func (game *rpgGame) enemiesAttack() {
 	for i := range game.enemies {
-		if game.enemies[i].npcAttackBoundsCheck(&game.player) && game.enemies[i].interactCooldown < 0 {
+		if game.enemies[i].isPlayerInAttackRange(&game.player) && game.enemies[i].interactCooldown < 0 {
 			if game.enemies[i].level == game.levelCurrent {
 				//damage player
 				game.sounds.playerDamaged.playSound()
@@ -871,28 +752,10 @@ func (game *rpgGame) enemiesAttack() {
 
 }
 
-func (npc *character) npcAttackBoundsCheck(player *character) bool {
-	player.updatePlayerInteractRectangle()
-	npcBounds := npc.getCollisionBoundingBox()
-	playerBounds := player.getCollisionBoundingBox()
-
-	if collision.AABBCollision(playerBounds, npcBounds) {
-		return true
-	}
-	return false
-}
-
-func (character *character) death(game *rpgGame) {
-	character.dropAllItems(game)
-	character.xLoc = -100
-	character.yLoc = -100
-	game.sounds.enemyDeath.playSound()
-}
-
 func (game *rpgGame) itemsPickupCheck() {
 	newDroppedItems := make([]item, 0)
 	for i := range game.droppedItems {
-		if game.player.isItemColliding(&game.droppedItems[i]) {
+		if game.player.isItemColliding(&game.droppedItems[i]) && game.droppedItems[i].level == game.levelCurrent {
 			game.player.inventory = append(game.player.inventory, game.droppedItems[i])
 			if game.droppedItems[i].displayName != "Heart" {
 				game.sounds.itemPickup.playSound()
@@ -902,102 +765,4 @@ func (game *rpgGame) itemsPickupCheck() {
 		}
 	}
 	game.droppedItems = newDroppedItems
-}
-
-func (character *character) isItemColliding(item *item) bool {
-	itemBounds := collision.BoundingBox{
-		X:      float64(item.xLoc),
-		Y:      float64(item.yLoc),
-		Width:  float64(item.picture.Bounds().Dx() * resizeScale),
-		Height: float64(item.picture.Bounds().Dy() * resizeScale),
-	}
-	playerBounds := character.getCollisionBoundingBox()
-
-	if collision.AABBCollision(itemBounds, playerBounds) {
-		return true
-	} else {
-		return false
-	}
-}
-
-func (character *character) getCollisionBoundingBox() collision.BoundingBox {
-	boundBox := collision.BoundingBox{
-		X:      float64(character.xLoc),
-		Y:      float64(character.yLoc),
-		Width:  float64(character.FRAME_WIDTH * resizeScale),
-		Height: float64(character.FRAME_HEIGHT * resizeScale),
-	}
-	return boundBox
-}
-
-func (character *character) dropAllItems(game *rpgGame) {
-	for i := range character.inventory {
-		character.dropItem(game, i)
-	}
-	character.dropItem(game, -1)
-}
-
-func (character *character) dropItem(game *rpgGame, itemIndex int) {
-	//character.inventory[itemIndex] = nil
-	if itemIndex < 0 {
-		heart := HeartItem
-		heart.xLoc = character.xLoc + 20
-		heart.yLoc = character.yLoc + 20
-		game.droppedItems = append(game.droppedItems, heart)
-	} else {
-		droppedItem := character.inventory[itemIndex]
-		droppedItem.xLoc = character.xLoc + 40
-		droppedItem.yLoc = character.yLoc + 40
-		game.droppedItems = append(game.droppedItems, droppedItem)
-		character.removeInventoryItemAtIndex(itemIndex)
-	}
-}
-
-func (character *character) getItemIndex(itemName string) int {
-	for i := range character.inventory {
-		if character.inventory[i].displayName == itemName {
-			return i
-		}
-	}
-	return -1
-}
-
-func (character *character) questCheckForBook() bool {
-	index := character.getItemIndex(BookItem.displayName)
-	if index != -1 {
-		character.removeInventoryItemAtIndex(index)
-		return true
-	}
-	return false
-}
-
-func (character *character) removeInventoryItemAtIndex(index int) {
-	retained := make([]item, 0)
-	for i := range character.inventory {
-		if i != index {
-			retained = append(retained, character.inventory[i])
-		}
-	}
-	character.inventory = retained
-}
-
-func playSound(s string) {
-	fmt.Println(s)
-}
-
-func (character *character) convertHeartItemsToHealth() bool {
-	indexToRemove := 0
-	remove := false
-	for i := range character.inventory {
-		if character.inventory[i].displayName == "Heart" {
-			indexToRemove = i
-			remove = true
-			character.hitPoints++
-			break
-		}
-	}
-	if remove {
-		character.removeInventoryItemAtIndex(indexToRemove)
-	}
-	return remove
 }
