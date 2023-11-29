@@ -64,7 +64,7 @@ type rpgGame struct {
 	barrierIDs      []uint32
 	barrierRect     []image.Rectangle
 	teleporterRects map[uint32]image.Rectangle
-	player          character
+	player          player
 	enemies         []character
 	questGiver      character
 	fontLarge       font.Face
@@ -119,7 +119,7 @@ func loadEmbeddedWavToSound(name string, context *audio.Context) sound {
 func (game *rpgGame) Update() error {
 	getPlayerInput(game)
 
-	animatePlayerSprite(&game.player)
+	game.player.animatePlayerSprite()
 	game.animateDroppedItems()
 
 	if ebiten.IsKeyPressed(ebiten.KeySpace) {
@@ -148,7 +148,7 @@ func (game *rpgGame) Update() error {
 		game.player.interactCooldown = COOLDOWN
 		for i := range game.enemies {
 			if game.enemies[i].level == game.levelCurrent {
-				if game.player.playerInteractWithCheck(&game.enemies[i]) {
+				if game.player.playerInteractWithCharacterCheck(&game.enemies[i]) {
 					game.enemies[i].hitPoints -= game.player.attackPower
 					game.sounds.enemyHit.playSound()
 					if game.enemies[i].hitPoints == 0 {
@@ -157,12 +157,12 @@ func (game *rpgGame) Update() error {
 				}
 			}
 		}
-		if game.player.playerInteractWithCheck(&game.questGiver) && game.questGiver.level == game.levelCurrent {
+		if game.player.playerInteractWithCharacterCheck(&game.questGiver) && game.questGiver.level == game.levelCurrent {
 			if game.player.questProgress == NOTTALKED {
 				game.player.questProgress = TALKED
 				//display quest text
 				game.sounds.questGiverTalk.playSound()
-			} else if game.player.questProgress == TALKED && game.player.questCheckForBook() { //AND H IASTEM
+			} else if game.player.questProgress == TALKED && game.player.questCheckInventoryForBook() { //AND H IASTEM
 				game.player.questProgress = RETURNEDITEM
 				game.player.attackPower++
 				game.sounds.attackPowerUp.playSound()
@@ -183,38 +183,11 @@ func (game *rpgGame) Update() error {
 	return nil
 }
 
-func (character *character) animateCharacter() {
-	if character.action == WALK {
-		character.frameDelay += 1
-		if character.frameDelay%8 == 0 {
-			character.frame += 1
-			if character.frame >= 4 {
-				character.frame = 0
-			}
-		}
-	}
-}
-
 func (game *rpgGame) movePlayer(location *int) {
 	if isBorderColliding(game.barrierRect, &game.player) {
-		*location -= translateDirection(game.player.direction) * game.player.speed * 5
+		*location -= game.player.translateDirectionToPositiveNegative() * game.player.speed * 5
 	} else {
-		*location += translateDirection(game.player.direction) * game.player.speed
-	}
-}
-
-func translateDirection(direction int) int {
-	switch direction {
-	case DOWN:
-		return 1
-	case RIGHT:
-		return 1
-	case UP:
-		return -1
-	case LEFT:
-		return -1
-	default:
-		return 0
+		*location += game.player.translateDirectionToPositiveNegative() * game.player.speed
 	}
 }
 
@@ -318,7 +291,7 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	}
 }
 
-func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter character) {
+func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter player) {
 	op.GeoM.Reset()
 	op.GeoM.Scale(resizeScale, resizeScale)
 	op.GeoM.Translate(float64(targetCharacter.xLoc), float64(targetCharacter.yLoc))
@@ -354,30 +327,6 @@ func (game *rpgGame) drawPlayerHealth(op *ebiten.DrawImageOptions, screen *ebite
 	for i := 0; i < game.player.hitPoints; i++ {
 		screen.DrawImage(game.heartImage.(*ebiten.Image), op)
 		op.GeoM.Translate(16*worldScale, 0)
-	}
-}
-
-func animatePlayerSprite(targetCharacter *character) {
-	if targetCharacter.action == WALK {
-		targetCharacter.frameDelay += 1
-		if targetCharacter.frameDelay%8 == 0 {
-			targetCharacter.frame += 1
-			if targetCharacter.frame >= 4 {
-				targetCharacter.frame = 0
-			}
-		}
-	} else if targetCharacter.action == INTERACT {
-		if 4 <= targetCharacter.frame && targetCharacter.frame <= 7 {
-			targetCharacter.frameDelay += 1
-			if targetCharacter.frameDelay%8 == 0 {
-				targetCharacter.frame--
-				if targetCharacter.frame <= 4 {
-					targetCharacter.frame = 7
-				}
-			}
-		} else {
-			targetCharacter.frame = 7
-		}
 	}
 }
 
@@ -430,21 +379,23 @@ func main() {
 	playerSpriteSheet := LoadEmbeddedImage("characters", "player.png")
 	enemySpriteSheet := LoadEmbeddedImage("characters", "characters.png")
 
-	user := character{
-		spriteSheet:      playerSpriteSheet,
-		xLoc:             400,
-		yLoc:             400,
-		direction:        RIGHT,
-		frame:            0,
-		frameDelay:       0,
-		FRAME_HEIGHT:     32,
-		FRAME_WIDTH:      16,
-		imageYOffset:     -1,
-		speed:            3,
-		hitPoints:        3,
-		questProgress:    NOTTALKED,
-		interactCooldown: COOLDOWN / 2,
-		attackPower:      1,
+	user := player{
+		character: character{
+			spriteSheet:      playerSpriteSheet,
+			xLoc:             400,
+			yLoc:             400,
+			direction:        RIGHT,
+			frame:            0,
+			frameDelay:       0,
+			FRAME_HEIGHT:     32,
+			FRAME_WIDTH:      16,
+			imageYOffset:     -1,
+			speed:            3,
+			hitPoints:        3,
+			interactCooldown: COOLDOWN / 2,
+			attackPower:      1,
+		},
+		questProgress: NOTTALKED,
 	}
 	questGiver := character{
 		spriteSheet:      enemySpriteSheet,
@@ -654,26 +605,7 @@ func DrawCenteredText(screen *ebiten.Image, font font.Face, s string, cx, cy int
 	text.Draw(screen, s, font, x, y, colornames.White)
 }
 
-//func addLabel(img *ebiten.Image, x, y int, label string) {
-//	// from https://stackoverflow.com/a/38300583
-//	col := color.RGBA{200, 100, 0, 255}
-//	point := fixed.Point26_6{fixed.I(x), fixed.I(y)}
-//
-//	d := &font.Drawer{
-//		Dst:  img,
-//		Src:  image.NewUniform(col),
-//		Face: basicfont.Face7x13,
-//		Dot:  point,
-//	}
-//	d.DrawString(label)
-//	//usage
-//	//img := ebiten.NewImage(300, 100)
-//	//addLabel(img, 20, 30, "Hello Go")
-//	//op.GeoM.Reset()
-//	//screen.DrawImage(img, op)
-//}
-
-func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
+func isBorderColliding(borderRects []image.Rectangle, player *player) bool {
 	playerBounds := player.getCollisionBoundingBox()
 
 	for _, border := range borderRects {
@@ -690,7 +622,7 @@ func isBorderColliding(borderRects []image.Rectangle, player *character) bool {
 	return false
 }
 
-func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player *character) uint32 {
+func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player *player) uint32 {
 	playerBounds := player.getCollisionBoundingBox()
 
 	for ID, teleporter := range teleporterRects {

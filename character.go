@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/co0p/tankism/lib/collision"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/lafriks/go-tiled"
@@ -25,66 +24,17 @@ type character struct {
 	level            *tiled.Map
 	interactRect     image.Rectangle
 	interactCooldown int
-	questProgress    int
 	attackPower      int
 }
 
-func (player *character) playerInteractWithCheck(target *character) bool {
-	player.updatePlayerInteractRectangle()
-	fmt.Printf("%d", player.direction)
-	fmt.Printf("player X: %d, Y: %d\n", player.xLoc, player.yLoc)
-	fmt.Printf("itneractbox X: %d, Y: %d  width: %d, height: %d\n", player.interactRect.Min.X, player.interactRect.Min.Y, player.interactRect.Dx()*worldScale, player.interactRect.Dy()*worldScale)
-	targetBounds := target.getCollisionBoundingBox()
-	playerBounds := player.getCollisionBoundingBox()
-	playerInteractBounds := collision.BoundingBox{
-		X:      float64(player.interactRect.Min.X),
-		Y:      float64(player.interactRect.Min.Y),
-		Width:  float64(player.interactRect.Dx()),
-		Height: float64(player.interactRect.Dy()),
-	}
-	if collision.AABBCollision(playerBounds, targetBounds) || collision.AABBCollision(playerInteractBounds, targetBounds) {
-		return true
-	}
-	return false
-}
+// player method
 
-func (player *character) updatePlayerInteractRectangle() {
-	//based on direction, change targetRectangle
-	switch player.direction {
-	case DOWN:
-		player.interactRect = image.Rect(
-			player.xLoc,
-			player.yLoc+player.FRAME_HEIGHT*resizeScale,
-			player.xLoc+player.FRAME_WIDTH*resizeScale,
-			player.yLoc+player.FRAME_HEIGHT*resizeScale+player.FRAME_WIDTH,
-		)
-	case RIGHT:
-		player.interactRect = image.Rect(
-			player.xLoc+player.FRAME_WIDTH*resizeScale,
-			player.yLoc,
-			player.xLoc+(player.FRAME_WIDTH*resizeScale*2),
-			player.yLoc+player.FRAME_HEIGHT,
-		)
-	case UP:
-		player.interactRect = image.Rect(
-			player.xLoc,
-			player.yLoc,
-			player.xLoc+(player.FRAME_WIDTH*resizeScale),
-			player.yLoc-(player.FRAME_WIDTH*resizeScale)-player.FRAME_WIDTH,
-		)
-	case LEFT:
-		player.interactRect = image.Rect(
-			player.xLoc,
-			player.yLoc,
-			player.xLoc-player.FRAME_WIDTH*resizeScale,
-			player.yLoc+player.FRAME_HEIGHT,
-		)
-	}
-}
+// player method
 
-func (npc *character) isPlayerInAttackRange(player *character) bool {
-	player.updatePlayerInteractRectangle()
-	npcBounds := npc.getCollisionBoundingBox()
+// character method
+func (character *character) isPlayerInAttackRange(player *player) bool {
+	player.updatePlayerInteractionRectangle()
+	npcBounds := character.getCollisionBoundingBox()
 	playerBounds := player.getCollisionBoundingBox()
 
 	if collision.AABBCollision(playerBounds, npcBounds) {
@@ -93,6 +43,7 @@ func (npc *character) isPlayerInAttackRange(player *character) bool {
 	return false
 }
 
+// character
 func (character *character) death(game *rpgGame) {
 	character.dropAllItems(game)
 	character.xLoc = -100
@@ -100,6 +51,7 @@ func (character *character) death(game *rpgGame) {
 	game.sounds.enemyDeath.playSound()
 }
 
+// character method
 func (character *character) isItemColliding(item *item) bool {
 	itemBounds := collision.BoundingBox{
 		X:      float64(item.xLoc),
@@ -116,6 +68,7 @@ func (character *character) isItemColliding(item *item) bool {
 	}
 }
 
+// character method
 func (character *character) getCollisionBoundingBox() collision.BoundingBox {
 	boundBox := collision.BoundingBox{
 		X:      float64(character.xLoc),
@@ -126,6 +79,7 @@ func (character *character) getCollisionBoundingBox() collision.BoundingBox {
 	return boundBox
 }
 
+// character
 func (character *character) dropAllItems(game *rpgGame) {
 	for i := range character.inventory {
 		character.dropItem(game, i)
@@ -133,6 +87,7 @@ func (character *character) dropAllItems(game *rpgGame) {
 	character.dropItem(game, -1)
 }
 
+// character
 func (character *character) dropItem(game *rpgGame, itemIndex int) {
 	//character.inventory[itemIndex] = nil
 	if itemIndex < 0 {
@@ -151,24 +106,9 @@ func (character *character) dropItem(game *rpgGame, itemIndex int) {
 	}
 }
 
-func (character *character) getItemIndex(itemName string) int {
-	for i := range character.inventory {
-		if character.inventory[i].displayName == itemName {
-			return i
-		}
-	}
-	return -1
-}
+// player
 
-func (character *character) questCheckForBook() bool {
-	index := character.getItemIndex(BookItem.displayName)
-	if index != -1 {
-		character.removeInventoryItemAtIndex(index)
-		return true
-	}
-	return false
-}
-
+// character
 func (character *character) removeInventoryItemAtIndex(index int) {
 	retained := make([]item, 0)
 	for i := range character.inventory {
@@ -179,19 +119,14 @@ func (character *character) removeInventoryItemAtIndex(index int) {
 	character.inventory = retained
 }
 
-func (character *character) convertHeartItemsToHealth() bool {
-	indexToRemove := 0
-	remove := false
-	for i := range character.inventory {
-		if character.inventory[i].displayName == "Heart" {
-			indexToRemove = i
-			remove = true
-			character.hitPoints++
-			break
+func (character *character) animateCharacter() {
+	if character.action == WALK {
+		character.frameDelay += 1
+		if character.frameDelay%8 == 0 {
+			character.frame += 1
+			if character.frame >= 4 {
+				character.frame = 0
+			}
 		}
 	}
-	if remove {
-		character.removeInventoryItemAtIndex(indexToRemove)
-	}
-	return remove
 }

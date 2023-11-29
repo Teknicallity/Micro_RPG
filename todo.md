@@ -11,3 +11,4 @@
 - more animated sprites
 - statistics
 
+-split character and player struct
