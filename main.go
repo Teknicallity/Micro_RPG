@@ -345,7 +345,7 @@ func main() {
 
 	soundContext := audio.NewContext(soundSampleRate)
 
-	snds := sounds{
+	sounds := sounds{
 		enemyDeath:     loadEmbeddedWavToSound("enemyDeath.wav", soundContext),
 		enemyHit:       loadEmbeddedWavToSound("enemyHit.wav", soundContext),
 		attackPowerUp:  loadEmbeddedWavToSound("attackPowerUp.wav", soundContext),
@@ -485,7 +485,7 @@ func main() {
 	droppedItems = append(droppedItems, stone)
 	fmt.Printf("items: %d\n", droppedItems)
 
-	teleRectangles := map[uint32]image.Rectangle{}
+	teleporterRectangles := map[uint32]image.Rectangle{}
 
 	var barrierID = []uint32{40, 41, 42, 43, 80, 81, 82, 83}
 
@@ -499,13 +499,13 @@ func main() {
 		barrierIDs:      barrierID,
 		windowWidth:     windowX,
 		windowHeight:    windowY,
-		teleporterRects: teleRectangles,
+		teleporterRects: teleporterRectangles,
 		heartImage:      heartImage,
 		fontLarge:       LoadScoreFont(60),
 		fontSmall:       LoadScoreFont(16),
 		droppedItems:    droppedItems,
 		questGiver:      questGiver,
-		sounds:          snds,
+		sounds:          sounds,
 	}
 	err := ebiten.RunGame(&game)
 	if err != nil {
@@ -638,8 +638,6 @@ func getTeleporterCollisionID(teleporterRects map[uint32]image.Rectangle, player
 	}
 	return 0
 }
-
-//if tileID ==1 change to x map  playerpositionX-screen absolute value
 
 func (game *rpgGame) changeWorldMap(tileID uint32) {
 	//
