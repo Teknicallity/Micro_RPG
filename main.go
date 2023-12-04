@@ -59,19 +59,20 @@ type rpgGame struct {
 	levelMaps       []*tiled.Map
 	tileHashCurrent map[uint32]*ebiten.Image
 	tileHashes      []map[uint32]*ebiten.Image
-	windowWidth     int
-	windowHeight    int
-	barrierIDs      []uint32
 	barrierRect     []image.Rectangle
 	teleporterRects map[uint32]image.Rectangle
-	player          player
-	enemies         []character
-	questGiver      character
-	fontLarge       font.Face
-	fontSmall       font.Face
-	heartImage      image.Image
-	droppedItems    []item
-	sounds          sounds
+
+	windowWidth  int
+	windowHeight int
+	barrierIDs   []uint32
+	player       player
+	enemies      []character
+	questGiver   character
+	fontLarge    font.Face
+	fontSmall    font.Face
+	heartImage   image.Image
+	droppedItems []item
+	sounds       sounds
 }
 
 type sounds struct {
@@ -358,18 +359,23 @@ func main() {
 
 	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
 	levelmaps := make([]*tiled.Map, 0, 5)
+
 	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx")) //0
 	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
 	levelmaps = append(levelmaps, gameMap)
 	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+
 	gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx")) //1
 	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
 	levelmaps = append(levelmaps, gameMap)
 	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+
 	gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx")) //2
 	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
 	levelmaps = append(levelmaps, gameMap)
 	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+
+	//world := worldinfo.initializeWorldInfo()
 
 	windowX := gameMap.TileWidth * gameMap.Width * worldScale
 	windowY := gameMap.TileHeight * gameMap.Height * worldScale

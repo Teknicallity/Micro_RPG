@@ -16,8 +16,11 @@ github.com/lafriks/go-tiled v0.12.0 h1:uteu/gkllQmv2/2O1xgxhyOH5/9VsOyGd5/M9sBeB
 github.com/lafriks/go-tiled v0.12.0/go.mod h1:W+Jg+seXMJu+fx7YCr/1PWNwMuvRWiOcywK72TnKc0M=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/solarlune/paths v0.0.0-20231114192052-27926568823f h1:J766M9dFZip9T7O5R5olke/FsGjZ3UfDzVuBuPcBc24=
+github.com/solarlune/paths v0.0.0-20231114192052-27926568823f/go.mod h1:C5Tmb7Ct4izNi5tAKM0aj5IoUOv1FnCmN8lk/ksa0Hk=
 github.com/stretchr/testify v1.8.2 h1:+h33VjcLVPDHtOdpUCuF+7gSuG3yGIftsP1YvFihtJ8=
 github.com/stretchr/testify v1.8.2/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+github.com/veandco/go-sdl2 v0.4.1/go.mod h1:FB+kTpX9YTE+urhYiClnRzpOXbiWgaU3+5F2AB78DPg=
 golang.org/x/exp/shiny v0.0.0-20230817173708-d852ddb80c63 h1:3AGKexOYqL+ztdWdkB1bDwXgPBuTS/S8A4WzuTvJ8Cg=
 golang.org/x/exp/shiny v0.0.0-20230817173708-d852ddb80c63/go.mod h1:UH99kUObWAZkDnWqppdQe5ZhPYESUw8I0zVV1uWBR+0=
 golang.org/x/image v0.14.0 h1:tNgSxAFe3jC4uYqvZdTr84SZoM1KfwdC9SKIFrLjFn4=

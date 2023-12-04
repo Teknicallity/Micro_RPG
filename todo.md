@@ -7,8 +7,11 @@
   - no clipping through walls
 
 
+- condense gamemap loading into a struct with methods
+- 
+
+
 - drop player inventory on death
 - more animated sprites
 - statistics
 
--split character and player struct

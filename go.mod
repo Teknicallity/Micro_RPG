@@ -6,6 +6,7 @@ require (
 	github.com/co0p/tankism v0.0.0-20230903205805-1ebc2e88a661
 	github.com/hajimehoshi/ebiten/v2 v2.6.2
 	github.com/lafriks/go-tiled v0.12.0
+	github.com/solarlune/paths v0.0.0-20231114192052-27926568823f
 	golang.org/x/image v0.14.0
 )
 
