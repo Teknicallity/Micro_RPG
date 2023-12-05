@@ -16,6 +16,7 @@ import (
 	"golang.org/x/image/font/opentype"
 	"image"
 	"log"
+	"math"
 	"path"
 	"slices"
 	"strconv"
@@ -41,6 +42,8 @@ const (
 const (
 	WALK = iota
 	INTERACT
+	PATH
+	//STAY
 )
 
 const (
@@ -55,24 +58,21 @@ const (
 )
 
 type rpgGame struct {
-	levelCurrent    *tiled.Map
-	levelMaps       []*tiled.Map
-	tileHashCurrent map[uint32]*ebiten.Image
-	tileHashes      []map[uint32]*ebiten.Image
+	worldinfo
+
 	barrierRect     []image.Rectangle
 	teleporterRects map[uint32]image.Rectangle
-
-	windowWidth  int
-	windowHeight int
-	barrierIDs   []uint32
-	player       player
-	enemies      []character
-	questGiver   character
-	fontLarge    font.Face
-	fontSmall    font.Face
-	heartImage   image.Image
-	droppedItems []item
-	sounds       sounds
+	windowWidth     int
+	windowHeight    int
+	barrierIDs      []uint32
+	player          player
+	enemies         []character
+	questGiver      character
+	fontLarge       font.Face
+	fontSmall       font.Face
+	heartImage      image.Image
+	droppedItems    []item
+	sounds          sounds
 }
 
 type sounds struct {
@@ -174,7 +174,20 @@ func (game *rpgGame) Update() error {
 	} else if game.player.interactCooldown > -10 {
 		game.player.interactCooldown--
 	}
+	for i := range game.enemies {
+		if game.enemies[i].action == PATH && game.enemies[i].pathUpdateCooldown < 0 &&
+			game.enemies[i].level == game.levelCurrent {
+
+			game.enemies[i].pathUpdateCooldown = COOLDOWN
+			game.updatePath(&game.enemies[i], &game.player)
+
+		} else if game.enemies[i].pathUpdateCooldown > -10 {
+			game.enemies[i].pathUpdateCooldown--
+		}
+	}
+
 	game.enemiesAttack()
+	game.enemiesPathing()
 
 	for i := range game.enemies {
 		game.enemies[i].animateCharacter()
@@ -357,28 +370,31 @@ func main() {
 		itemPickup:     loadEmbeddedWavToSound("itemPickup.wav", soundContext),
 	}
 
-	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
-	levelmaps := make([]*tiled.Map, 0, 5)
+	//tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
+	//levelmaps := make([]*tiled.Map, 0, 5)
+	//
+	//gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx")) //0
+	//ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
+	//levelmaps = append(levelmaps, gameMap)
+	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	//
+	//gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx")) //1
+	//ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
+	//levelmaps = append(levelmaps, gameMap)
+	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	//
+	//gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx")) //2
+	//ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
+	//levelmaps = append(levelmaps, gameMap)
+	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
 
-	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx")) //0
-	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
-	levelmaps = append(levelmaps, gameMap)
-	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	world := initializeWorldInfo()
 
-	gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx")) //1
-	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
-	levelmaps = append(levelmaps, gameMap)
-	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	windowX := world.levelCurrent.TileWidth * world.levelCurrent.Width * worldScale
+	windowY := world.levelCurrent.TileHeight * world.levelCurrent.Height * worldScale
 
-	gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx")) //2
-	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
-	levelmaps = append(levelmaps, gameMap)
-	tileMapHashes = append(tileMapHashes, ebitenImageMap)
-
-	//world := worldinfo.initializeWorldInfo()
-
-	windowX := gameMap.TileWidth * gameMap.Width * worldScale
-	windowY := gameMap.TileHeight * gameMap.Height * worldScale
+	//windowX := gameMap.TileWidth * gameMap.Width * worldScale
+	//windowY := gameMap.TileHeight * gameMap.Height * worldScale
 	ebiten.SetWindowSize(windowX, windowY)
 	fmt.Printf("windowWidth: %d, windowHeight: %d\n", windowX, windowY)
 
@@ -415,7 +431,7 @@ func main() {
 		FRAME_WIDTH:      32,
 		action:           WALK,
 		imageYOffset:     0,
-		level:            levelmaps[2],
+		level:            world.levelMaps[2],
 		hitPoints:        1,
 		interactCooldown: COOLDOWN,
 	}
@@ -424,57 +440,63 @@ func main() {
 	mannequinInventory = append(mannequinInventory, BookItem)
 
 	mannequin := character{
-		spriteSheet:      enemySpriteSheet,
-		xLoc:             100,
-		yLoc:             100,
-		inventory:        mannequinInventory,
-		direction:        CHARACTLEFT,
-		frame:            0,
-		frameDelay:       0,
-		FRAME_HEIGHT:     32,
-		FRAME_WIDTH:      32,
-		action:           WALK,
-		imageYOffset:     0,
-		level:            levelmaps[1],
-		hitPoints:        2,
-		interactCooldown: COOLDOWN,
-		attackPower:      1,
+		spriteSheet:        enemySpriteSheet,
+		xLoc:               100,
+		yLoc:               100,
+		inventory:          mannequinInventory,
+		direction:          CHARACTLEFT,
+		frame:              0,
+		frameDelay:         0,
+		FRAME_HEIGHT:       32,
+		FRAME_WIDTH:        32,
+		action:             PATH,
+		imageYOffset:       0,
+		speed:              2,
+		level:              world.levelMaps[1],
+		hitPoints:          2,
+		interactCooldown:   COOLDOWN,
+		attackPower:        1,
+		pathUpdateCooldown: COOLDOWN,
 	}
 
 	king := character{
-		spriteSheet:      enemySpriteSheet,
-		xLoc:             100,
-		yLoc:             200,
-		inventory:        nil,
-		direction:        CHARACTLEFT,
-		frame:            0,
-		frameDelay:       0,
-		FRAME_HEIGHT:     32,
-		FRAME_WIDTH:      32,
-		action:           WALK,
-		imageYOffset:     1,
-		level:            levelmaps[0],
-		hitPoints:        2,
-		interactCooldown: COOLDOWN,
-		attackPower:      1,
+		spriteSheet:        enemySpriteSheet,
+		xLoc:               100,
+		yLoc:               200,
+		inventory:          nil,
+		direction:          CHARACTLEFT,
+		frame:              0,
+		frameDelay:         0,
+		FRAME_HEIGHT:       32,
+		FRAME_WIDTH:        32,
+		action:             PATH,
+		imageYOffset:       1,
+		speed:              2,
+		level:              world.levelMaps[0],
+		hitPoints:          2,
+		interactCooldown:   COOLDOWN,
+		attackPower:        1,
+		pathUpdateCooldown: COOLDOWN,
 	}
 
 	leprechaun := character{
-		spriteSheet:      enemySpriteSheet,
-		xLoc:             300,
-		yLoc:             300,
-		inventory:        nil,
-		direction:        CHARACTRIGHT,
-		frame:            0,
-		frameDelay:       0,
-		FRAME_HEIGHT:     32,
-		FRAME_WIDTH:      32,
-		action:           WALK,
-		imageYOffset:     2,
-		level:            levelmaps[0],
-		hitPoints:        2,
-		interactCooldown: COOLDOWN,
-		attackPower:      1,
+		spriteSheet:        enemySpriteSheet,
+		xLoc:               300,
+		yLoc:               300,
+		inventory:          nil,
+		direction:          CHARACTRIGHT,
+		frame:              0,
+		frameDelay:         0,
+		FRAME_HEIGHT:       32,
+		FRAME_WIDTH:        32,
+		action:             PATH,
+		imageYOffset:       2,
+		speed:              2,
+		level:              world.levelMaps[0],
+		hitPoints:          2,
+		interactCooldown:   COOLDOWN,
+		attackPower:        1,
+		pathUpdateCooldown: COOLDOWN,
 	}
 	enemies := make([]character, 0, 5)
 	enemies = append(enemies, mannequin)
@@ -484,10 +506,10 @@ func main() {
 	heartImage := grabItemImage(63, 0, 16, 16)
 	droppedItems := make([]item, 0, 10)
 	heart := HeartItem
-	heart.level = levelmaps[2]
+	heart.level = world.levelMaps[2]
 	droppedItems = append(droppedItems, heart)
 	stone := StoneItem
-	stone.level = levelmaps[2]
+	stone.level = world.levelMaps[2]
 	droppedItems = append(droppedItems, stone)
 	fmt.Printf("items: %d\n", droppedItems)
 
@@ -496,10 +518,11 @@ func main() {
 	var barrierID = []uint32{40, 41, 42, 43, 80, 81, 82, 83}
 
 	game := rpgGame{
-		levelCurrent:    gameMap,
-		tileHashCurrent: ebitenImageMap,
-		levelMaps:       levelmaps,
-		tileHashes:      tileMapHashes,
+		//levelCurrent:    gameMap,
+		//tileHashCurrent: ebitenImageMap,
+		//levelMaps:       levelmaps,
+		//tileHashes:      tileMapHashes,
+		worldinfo:       *world,
 		player:          user,
 		enemies:         enemies,
 		barrierIDs:      barrierID,
@@ -652,6 +675,7 @@ func (game *rpgGame) changeWorldMap(tileID uint32) {
 		game.levelCurrent = game.levelMaps[1]
 		game.tileHashCurrent = game.tileHashes[1]
 		game.player.xLoc = 50
+		game.pathGridCurrent = game.pathGrids[1]
 	} else if tileID == 2 {
 		// go to main world
 		game.levelCurrent = game.levelMaps[2]
@@ -661,11 +685,13 @@ func (game *rpgGame) changeWorldMap(tileID uint32) {
 		} else if game.player.xLoc < 150 {
 			game.player.xLoc = game.windowWidth - 100
 		}
+		game.pathGridCurrent = game.pathGrids[2]
 	} else if tileID == 3 {
 		//go to left world
 		game.levelCurrent = game.levelMaps[0]
 		game.tileHashCurrent = game.tileHashes[0]
 		game.player.xLoc = game.windowWidth - 100
+		game.pathGridCurrent = game.pathGrids[0]
 	}
 	//fmt.Println(game.levelCurrent)
 	game.barrierRect = game.barrierRect[:0]
@@ -685,7 +711,14 @@ func (game *rpgGame) enemiesAttack() {
 			game.enemies[i].interactCooldown--
 		}
 	}
+}
 
+func (game *rpgGame) enemiesPathing() {
+	for i := range game.enemies {
+		if game.enemies[i].level == game.levelCurrent {
+			game.moveCharacterAlongPath(&game.enemies[i])
+		}
+	}
 }
 
 func (game *rpgGame) itemsPickupCheck() {
@@ -701,4 +734,41 @@ func (game *rpgGame) itemsPickupCheck() {
 		}
 	}
 	game.droppedItems = newDroppedItems
+}
+
+func (game *rpgGame) updatePath(c *character, player *player) {
+	cStartCol := c.xLoc / game.levelCurrent.TileWidth
+	cStartRow := c.yLoc / game.levelCurrent.TileHeight
+	playerCol := player.xLoc / game.levelCurrent.TileWidth
+	playerRow := player.yLoc / game.levelCurrent.TileHeight
+
+	startCell := game.pathGridCurrent.Get(cStartCol, cStartRow)
+	endCell := game.pathGridCurrent.Get(playerCol, playerRow)
+
+	c.path = game.pathGridCurrent.GetPathFromCells(startCell, endCell, false, false)
+
+}
+
+func (game *rpgGame) moveCharacterAlongPath(c *character) {
+	if c.path != nil {
+		pathCell := c.path.Current()
+		if math.Abs(float64(pathCell.X*game.levelCurrent.TileWidth)-float64(c.xLoc)) <= 2 &&
+			math.Abs(float64(pathCell.Y*game.levelCurrent.TileHeight)-float64(c.yLoc)) <= 2 { //if we are now on the tile we need to be on
+			c.path.Advance()
+		}
+		direction := 0
+		if pathCell.X*game.levelCurrent.TileWidth > c.xLoc {
+			direction = 1
+		} else if pathCell.X*game.levelCurrent.TileWidth < c.xLoc {
+			direction = -1
+		}
+		Ydirection := 0
+		if pathCell.Y*game.levelCurrent.TileHeight > c.yLoc {
+			Ydirection = 1
+		} else if pathCell.Y*game.levelCurrent.TileHeight < c.yLoc {
+			Ydirection = -1
+		}
+		c.xLoc += direction * c.speed
+		c.yLoc += Ydirection * c.speed
+	}
 }

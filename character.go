@@ -4,27 +4,30 @@ import (
 	"github.com/co0p/tankism/lib/collision"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/lafriks/go-tiled"
+	"github.com/solarlune/paths"
 	"image"
 )
 
 type character struct {
-	spriteSheet      *ebiten.Image
-	xLoc             int
-	yLoc             int
-	hitPoints        int
-	inventory        []item
-	direction        int
-	frame            int
-	frameDelay       int
-	FRAME_HEIGHT     int
-	FRAME_WIDTH      int
-	action           int
-	imageYOffset     int
-	speed            int
-	level            *tiled.Map
-	interactRect     image.Rectangle
-	interactCooldown int
-	attackPower      int
+	spriteSheet        *ebiten.Image
+	xLoc               int
+	yLoc               int
+	hitPoints          int
+	inventory          []item
+	direction          int
+	frame              int
+	frameDelay         int
+	FRAME_HEIGHT       int
+	FRAME_WIDTH        int
+	action             int
+	imageYOffset       int
+	speed              int
+	level              *tiled.Map
+	interactRect       image.Rectangle
+	interactCooldown   int
+	attackPower        int
+	path               *paths.Path
+	pathUpdateCooldown int
 }
 
 // player method

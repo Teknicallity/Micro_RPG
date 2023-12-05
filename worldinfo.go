@@ -20,12 +20,12 @@ type worldinfo struct {
 	pathGrids             []*paths.Grid
 }
 
-func (w worldinfo) initializeWorldInfo() worldinfo {
+func initializeWorldInfo() *worldinfo {
 	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
 	levelmaps := make([]*tiled.Map, 0, 5)
 	pathfindingmaps := make([][]string, 0, 5)
 	pathfindinggrids := make([]*paths.Grid, 0, 5)
-	world := worldinfo{
+	w := worldinfo{
 		levelCurrent:          nil,
 		levelMaps:             levelmaps,
 		tileHashCurrent:       nil,
@@ -39,14 +39,10 @@ func (w worldinfo) initializeWorldInfo() worldinfo {
 	w.importTmx("dirt.tmx")
 	w.importTmx("island.tmx")
 	w.importTmx("world.tmx")
-	return world
+	return &w
 }
 
-func (w worldinfo) fillSearchPaths() {
-
-}
-
-func (w worldinfo) importTmx(filename string) {
+func (w *worldinfo) importTmx(filename string) {
 	gameMap := loadMapFromEmbedded(path.Join("assets", filename))
 	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
 
@@ -60,21 +56,23 @@ func (w worldinfo) importTmx(filename string) {
 	w.pathFindingMaps = append(w.pathFindingMaps, searchMap)
 
 	searchablePathMap := paths.NewGridFromStringArrays(searchMap, gameMap.TileWidth, gameMap.TileHeight)
+	searchablePathMap.SetWalkable('1', false)
+	searchablePathMap.SetWalkable('2', false)
 	w.pathGridCurrent = searchablePathMap
 	w.pathGrids = append(w.pathGrids, searchablePathMap)
 
 }
 
 // makeSearchMap Takes a tiled.Map and returns a string array, which is used by the paths package
-func (w worldinfo) makeSearchMap(tiledMap *tiled.Map) []string {
+func (w *worldinfo) makeSearchMap(tiledMap *tiled.Map) []string {
 	mapAsStringSlice := make([]string, 0, tiledMap.Height) //each row will be its own string
 	row := strings.Builder{}
-	for position, tile := range tiledMap.Layers[0].Tiles {
+	for position, tile := range tiledMap.Layers[1].Tiles {
 		if position%tiledMap.Width == 0 && position > 0 { // we get the 2d array as an unrolled one-d array
 			mapAsStringSlice = append(mapAsStringSlice, row.String())
 			row = strings.Builder{}
 		}
-		row.WriteString(fmt.Sprintf("%d", tile.ID))
+		row.WriteString(fmt.Sprintf("%d", tile.ID%10))
 	}
 	mapAsStringSlice = append(mapAsStringSlice, row.String())
 	return mapAsStringSlice

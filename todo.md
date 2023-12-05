@@ -3,12 +3,11 @@
     - includes idle or patrol state
     - includes move towards player state
     - attacking state
-- efficiently plan a path towards the player
-  - no clipping through walls
+
+- organize sound/sounds
 
 
-- condense gamemap loading into a struct with methods
-- 
+- recreate character path at intervals
 
 
 - drop player inventory on death
