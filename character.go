@@ -133,3 +133,7 @@ func (character *character) animateCharacter() {
 		}
 	}
 }
+
+func (character *character) moveCharacter(x, y int, game *rpgGame) {
+
+}

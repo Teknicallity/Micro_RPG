@@ -737,10 +737,10 @@ func (game *rpgGame) itemsPickupCheck() {
 }
 
 func (game *rpgGame) updatePath(c *character, player *player) {
-	cStartCol := c.xLoc / game.levelCurrent.TileWidth
-	cStartRow := c.yLoc / game.levelCurrent.TileHeight
-	playerCol := player.xLoc / game.levelCurrent.TileWidth
-	playerRow := player.yLoc / game.levelCurrent.TileHeight
+	cStartCol := (c.xLoc / resizeScale) / game.levelCurrent.TileWidth
+	cStartRow := (c.yLoc / resizeScale) / game.levelCurrent.TileHeight
+	playerCol := (player.xLoc / resizeScale) / game.levelCurrent.TileWidth
+	playerRow := (player.yLoc / resizeScale) / game.levelCurrent.TileHeight
 
 	startCell := game.pathGridCurrent.Get(cStartCol, cStartRow)
 	endCell := game.pathGridCurrent.Get(playerCol, playerRow)
@@ -752,20 +752,21 @@ func (game *rpgGame) updatePath(c *character, player *player) {
 func (game *rpgGame) moveCharacterAlongPath(c *character) {
 	if c.path != nil {
 		pathCell := c.path.Current()
-		if math.Abs(float64(pathCell.X*game.levelCurrent.TileWidth)-float64(c.xLoc)) <= 2 &&
-			math.Abs(float64(pathCell.Y*game.levelCurrent.TileHeight)-float64(c.yLoc)) <= 2 { //if we are now on the tile we need to be on
+		//if we are now on the tile we need to be on
+		if math.Abs(float64(pathCell.X*game.levelCurrent.TileWidth*resizeScale)-float64(c.xLoc)) <= 2 &&
+			math.Abs(float64(pathCell.Y*game.levelCurrent.TileHeight*resizeScale)-float64(c.yLoc)) <= 2 {
 			c.path.Advance()
 		}
 		direction := 0
-		if pathCell.X*game.levelCurrent.TileWidth > c.xLoc {
+		if pathCell.X*game.levelCurrent.TileWidth*resizeScale > c.xLoc {
 			direction = 1
-		} else if pathCell.X*game.levelCurrent.TileWidth < c.xLoc {
+		} else if pathCell.X*game.levelCurrent.TileWidth*resizeScale < c.xLoc {
 			direction = -1
 		}
 		Ydirection := 0
-		if pathCell.Y*game.levelCurrent.TileHeight > c.yLoc {
+		if pathCell.Y*game.levelCurrent.TileHeight*resizeScale > c.yLoc {
 			Ydirection = 1
-		} else if pathCell.Y*game.levelCurrent.TileHeight < c.yLoc {
+		} else if pathCell.Y*game.levelCurrent.TileHeight*resizeScale < c.yLoc {
 			Ydirection = -1
 		}
 		c.xLoc += direction * c.speed

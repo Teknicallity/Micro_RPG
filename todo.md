@@ -8,6 +8,7 @@
 
 
 - recreate character path at intervals
+- character bounds check
 
 
 - drop player inventory on death
