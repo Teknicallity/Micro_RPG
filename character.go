@@ -30,10 +30,6 @@ type character struct {
 	pathUpdateCooldown int
 }
 
-// player method
-
-// player method
-
 // character method
 func (character *character) isPlayerInAttackRange(player *player) bool {
 	player.updatePlayerInteractionRectangle()

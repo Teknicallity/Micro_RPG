@@ -187,7 +187,7 @@ func (game *rpgGame) Update() error {
 	}
 
 	game.enemiesAttack()
-	game.enemiesPathing()
+	//game.enemiesPathing()
 
 	for i := range game.enemies {
 		game.enemies[i].animateCharacter()
@@ -266,13 +266,13 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	}
 
 	drawPlayerFromSpriteSheet(op, screen, game.player)
-	for _, charact := range game.enemies {
-		if charact.level == game.levelCurrent {
-			drawImageFromSpriteSheet(op, screen, charact)
+	for i := range game.enemies {
+		if game.enemies[i].level == game.levelCurrent {
+			drawImageFromSpriteSheet(op, screen, &game.enemies[i])
 		}
 	}
 	if game.questGiver.level == game.levelCurrent {
-		drawImageFromSpriteSheet(op, screen, game.questGiver)
+		drawImageFromSpriteSheet(op, screen, &game.questGiver)
 	}
 
 	for _, item := range game.droppedItems {
@@ -317,7 +317,7 @@ func drawPlayerFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image
 			targetCharacter.direction*targetCharacter.FRAME_HEIGHT+targetCharacter.FRAME_HEIGHT)).(*ebiten.Image), op)
 }
 
-func drawImageFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter character) {
+func drawImageFromSpriteSheet(op *ebiten.DrawImageOptions, screen *ebiten.Image, targetCharacter *character) {
 	op.GeoM.Reset()
 	if targetCharacter.direction == CHARACTLEFT {
 		op.GeoM.Scale(resizeScale, resizeScale)
@@ -369,24 +369,6 @@ func main() {
 		questGiverTalk: loadEmbeddedWavToSound("questGiverTalk.wav", soundContext),
 		itemPickup:     loadEmbeddedWavToSound("itemPickup.wav", soundContext),
 	}
-
-	//tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
-	//levelmaps := make([]*tiled.Map, 0, 5)
-	//
-	//gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx")) //0
-	//ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
-	//levelmaps = append(levelmaps, gameMap)
-	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
-	//
-	//gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx")) //1
-	//ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
-	//levelmaps = append(levelmaps, gameMap)
-	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
-	//
-	//gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx")) //2
-	//ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
-	//levelmaps = append(levelmaps, gameMap)
-	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
 
 	world := initializeWorldInfo()
 
