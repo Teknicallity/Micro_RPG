@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/lafriks/go-tiled"
+	"github.com/solarlune/paths"
 	"golang.org/x/image/colornames"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -20,6 +21,7 @@ import (
 	"path"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 //go:embed assets/*
@@ -58,21 +60,27 @@ const (
 )
 
 type rpgGame struct {
-	worldinfo
-
-	barrierRect     []image.Rectangle
-	teleporterRects map[uint32]image.Rectangle
-	windowWidth     int
-	windowHeight    int
-	barrierIDs      []uint32
-	player          player
-	enemies         []character
-	questGiver      character
-	fontLarge       font.Face
-	fontSmall       font.Face
-	heartImage      image.Image
-	droppedItems    []item
-	sounds          sounds
+	levelCurrent          *tiled.Map
+	levelMaps             []*tiled.Map
+	tileHashCurrent       map[uint32]*ebiten.Image
+	tileHashes            []map[uint32]*ebiten.Image
+	pathFindingMapCurrent []string
+	pathFindingMaps       [][]string
+	pathGridCurrent       *paths.Grid
+	pathGrids             []*paths.Grid
+	barrierRect           []image.Rectangle
+	teleporterRects       map[uint32]image.Rectangle
+	windowWidth           int
+	windowHeight          int
+	barrierIDs            []uint32
+	player                player
+	enemies               []character
+	questGiver            character
+	fontLarge             font.Face
+	fontSmall             font.Face
+	heartImage            image.Image
+	droppedItems          []item
+	sounds                sounds
 }
 
 type sounds struct {
@@ -370,10 +378,52 @@ func main() {
 		itemPickup:     loadEmbeddedWavToSound("itemPickup.wav", soundContext),
 	}
 
-	world := initializeWorldInfo()
+	tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
+	levelmaps := make([]*tiled.Map, 0, 5)
+	pathfindingmaps := make([][]string, 0, 5)
+	pathfindinggrids := make([]*paths.Grid, 0, 5)
 
-	windowX := world.levelCurrent.TileWidth * world.levelCurrent.Width * worldScale
-	windowY := world.levelCurrent.TileHeight * world.levelCurrent.Height * worldScale
+	//START
+	gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx"))
+	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
+	levelmaps = append(levelmaps, gameMap)
+	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	searchMap := makeSearchMap(gameMap)
+	pathfindingmaps = append(pathfindingmaps, searchMap)
+	searchablePathMap := paths.NewGridFromStringArrays(searchMap, gameMap.TileWidth, gameMap.TileHeight)
+	searchablePathMap.SetWalkable('1', false)
+	searchablePathMap.SetWalkable('2', false)
+	pathfindinggrids = append(pathfindinggrids, searchablePathMap)
+
+	gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx"))
+	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
+	levelmaps = append(levelmaps, gameMap)
+	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	searchMap = makeSearchMap(gameMap)
+	pathfindingmaps = append(pathfindingmaps, searchMap)
+	searchablePathMap = paths.NewGridFromStringArrays(searchMap, gameMap.TileWidth, gameMap.TileHeight)
+	searchablePathMap.SetWalkable('1', false)
+	searchablePathMap.SetWalkable('2', false)
+	pathfindinggrids = append(pathfindinggrids, searchablePathMap)
+
+	gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx"))
+	ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
+	levelmaps = append(levelmaps, gameMap)
+	tileMapHashes = append(tileMapHashes, ebitenImageMap)
+	searchMap = makeSearchMap(gameMap)
+	pathfindingmaps = append(pathfindingmaps, searchMap)
+	searchablePathMap = paths.NewGridFromStringArrays(searchMap, gameMap.TileWidth, gameMap.TileHeight)
+	searchablePathMap.SetWalkable('1', false)
+	searchablePathMap.SetWalkable('2', false)
+	pathfindinggrids = append(pathfindinggrids, searchablePathMap)
+	//STOP
+
+	//game.importTmx("dirt.tmx")
+	//game.importTmx("island.tmx")
+	//game.importTmx("world.tmx")
+
+	windowX := gameMap.TileWidth * gameMap.Width * worldScale
+	windowY := gameMap.TileHeight * gameMap.Height * worldScale
 
 	//windowX := gameMap.TileWidth * gameMap.Width * worldScale
 	//windowY := gameMap.TileHeight * gameMap.Height * worldScale
@@ -413,7 +463,7 @@ func main() {
 		FRAME_WIDTH:      32,
 		action:           WALK,
 		imageYOffset:     0,
-		level:            world.levelMaps[2],
+		level:            levelmaps[2],
 		hitPoints:        1,
 		interactCooldown: COOLDOWN,
 	}
@@ -434,7 +484,7 @@ func main() {
 		action:             PATH,
 		imageYOffset:       0,
 		speed:              2,
-		level:              world.levelMaps[1],
+		level:              levelmaps[1],
 		hitPoints:          2,
 		interactCooldown:   COOLDOWN,
 		attackPower:        1,
@@ -454,7 +504,7 @@ func main() {
 		action:             PATH,
 		imageYOffset:       1,
 		speed:              2,
-		level:              world.levelMaps[0],
+		level:              levelmaps[0],
 		hitPoints:          2,
 		interactCooldown:   COOLDOWN,
 		attackPower:        1,
@@ -474,7 +524,7 @@ func main() {
 		action:             PATH,
 		imageYOffset:       2,
 		speed:              2,
-		level:              world.levelMaps[0],
+		level:              levelmaps[0],
 		hitPoints:          2,
 		interactCooldown:   COOLDOWN,
 		attackPower:        1,
@@ -488,10 +538,10 @@ func main() {
 	heartImage := grabItemImage(63, 0, 16, 16)
 	droppedItems := make([]item, 0, 10)
 	heart := HeartItem
-	heart.level = world.levelMaps[2]
+	heart.level = levelmaps[2]
 	droppedItems = append(droppedItems, heart)
 	stone := StoneItem
-	stone.level = world.levelMaps[2]
+	stone.level = levelmaps[2]
 	droppedItems = append(droppedItems, stone)
 	fmt.Printf("items: %d\n", droppedItems)
 
@@ -500,11 +550,15 @@ func main() {
 	var barrierID = []uint32{40, 41, 42, 43, 80, 81, 82, 83}
 
 	game := rpgGame{
-		//levelCurrent:    gameMap,
-		//tileHashCurrent: ebitenImageMap,
-		//levelMaps:       levelmaps,
-		//tileHashes:      tileMapHashes,
-		worldinfo:       *world,
+		levelCurrent:          gameMap,
+		levelMaps:             levelmaps,
+		tileHashCurrent:       ebitenImageMap,
+		tileHashes:            tileMapHashes,
+		pathFindingMapCurrent: searchMap,
+		pathFindingMaps:       pathfindingmaps,
+		pathGridCurrent:       searchablePathMap,
+		pathGrids:             pathfindinggrids,
+
 		player:          user,
 		enemies:         enemies,
 		barrierIDs:      barrierID,
@@ -754,4 +808,40 @@ func (game *rpgGame) moveCharacterAlongPath(c *character) {
 		c.xLoc += direction * c.speed
 		c.yLoc += Ydirection * c.speed
 	}
+}
+
+func (game *rpgGame) importTmx(filename string) {
+	gameMap := loadMapFromEmbedded(path.Join("assets", filename))
+	ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
+
+	game.levelMaps = append(game.levelMaps, gameMap)
+	game.levelCurrent = gameMap
+	game.tileHashCurrent = ebitenImageMap
+	game.tileHashes = append(game.tileHashes, ebitenImageMap)
+
+	searchMap := makeSearchMap(gameMap)
+	game.pathFindingMapCurrent = searchMap
+	game.pathFindingMaps = append(game.pathFindingMaps, searchMap)
+
+	searchablePathMap := paths.NewGridFromStringArrays(searchMap, gameMap.TileWidth, gameMap.TileHeight)
+	searchablePathMap.SetWalkable('1', false)
+	searchablePathMap.SetWalkable('2', false)
+	game.pathGridCurrent = searchablePathMap
+	game.pathGrids = append(game.pathGrids, searchablePathMap)
+
+}
+
+// makeSearchMap Takes a tiled.Map and returns a string array, which is used by the paths package
+func makeSearchMap(tiledMap *tiled.Map) []string {
+	mapAsStringSlice := make([]string, 0, tiledMap.Height) //each row will be its own string
+	row := strings.Builder{}
+	for position, tile := range tiledMap.Layers[1].Tiles {
+		if position%tiledMap.Width == 0 && position > 0 { // we get the 2d array as an unrolled one-d array
+			mapAsStringSlice = append(mapAsStringSlice, row.String())
+			row = strings.Builder{}
+		}
+		row.WriteString(fmt.Sprintf("%d", tile.ID%10))
+	}
+	mapAsStringSlice = append(mapAsStringSlice, row.String())
+	return mapAsStringSlice
 }
