@@ -43,6 +43,7 @@ const (
 	WALK = iota
 	INTERACT
 	PATH
+	DEAD
 	//STAY
 )
 
@@ -441,8 +442,8 @@ func main() {
 
 	mannequin := character{
 		spriteSheet:        enemySpriteSheet,
-		xLoc:               100,
-		yLoc:               100,
+		xLoc:               500,
+		yLoc:               200,
 		inventory:          mannequinInventory,
 		direction:          CHARACTLEFT,
 		frame:              0,
@@ -451,7 +452,7 @@ func main() {
 		FRAME_WIDTH:        32,
 		action:             PATH,
 		imageYOffset:       0,
-		speed:              2,
+		speed:              1,
 		level:              world.levelMaps[1],
 		hitPoints:          2,
 		interactCooldown:   COOLDOWN,
@@ -471,7 +472,7 @@ func main() {
 		FRAME_WIDTH:        32,
 		action:             PATH,
 		imageYOffset:       1,
-		speed:              2,
+		speed:              1,
 		level:              world.levelMaps[0],
 		hitPoints:          2,
 		interactCooldown:   COOLDOWN,
@@ -491,7 +492,7 @@ func main() {
 		FRAME_WIDTH:        32,
 		action:             PATH,
 		imageYOffset:       2,
-		speed:              2,
+		speed:              1,
 		level:              world.levelMaps[0],
 		hitPoints:          2,
 		interactCooldown:   COOLDOWN,
@@ -715,7 +716,7 @@ func (game *rpgGame) enemiesAttack() {
 
 func (game *rpgGame) enemiesPathing() {
 	for i := range game.enemies {
-		if game.enemies[i].level == game.levelCurrent {
+		if game.enemies[i].level == game.levelCurrent && game.enemies[i].action == PATH {
 			game.moveCharacterAlongPath(&game.enemies[i])
 		}
 	}
@@ -769,7 +770,7 @@ func (game *rpgGame) moveCharacterAlongPath(c *character) {
 		} else if pathCell.Y*game.levelCurrent.TileHeight*resizeScale < c.yLoc {
 			Ydirection = -1
 		}
-		c.xLoc += direction * c.speed
-		c.yLoc += Ydirection * c.speed
+
+		c.moveCharacter(direction, Ydirection)
 	}
 }

@@ -51,6 +51,7 @@ func (character *character) death(game *rpgGame) {
 	character.dropAllItems(game)
 	character.xLoc = -100
 	character.yLoc = -100
+	character.action = DEAD
 	game.sounds.enemyDeath.playSound()
 }
 
@@ -123,7 +124,7 @@ func (character *character) removeInventoryItemAtIndex(index int) {
 }
 
 func (character *character) animateCharacter() {
-	if character.action == WALK {
+	if character.action == PATH || character.action == WALK {
 		character.frameDelay += 1
 		if character.frameDelay%8 == 0 {
 			character.frame += 1
@@ -134,6 +135,12 @@ func (character *character) animateCharacter() {
 	}
 }
 
-func (character *character) moveCharacter(x, y int, game *rpgGame) {
-
+func (character *character) moveCharacter(x, y int) {
+	if x < 0 || y < 0 {
+		character.direction = CHARACTRIGHT
+	} else if x > 0 || y > 0 {
+		character.direction = CHARACTLEFT
+	}
+	character.xLoc += x * character.speed
+	character.yLoc += y * character.speed
 }
