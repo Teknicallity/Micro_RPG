@@ -469,7 +469,7 @@ func main() {
 	king := character{
 		spriteSheet:        enemySpriteSheet,
 		xLoc:               100,
-		yLoc:               200,
+		yLoc:               100,
 		inventory:          nil,
 		direction:          CHARACTLEFT,
 		frame:              0,
