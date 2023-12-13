@@ -30,6 +30,7 @@ const (
 	worldScale      = 3
 	COOLDOWN        = 60
 	soundSampleRate = 48000
+	LINEOFSITERANGE = 350
 )
 
 const (
@@ -44,7 +45,7 @@ const (
 	INTERACT
 	PATH
 	DEAD
-	//STAY
+	STAY
 )
 
 const (
@@ -123,20 +124,21 @@ func (game *rpgGame) Update() error {
 
 	game.player.animatePlayerSprite()
 	game.animateDroppedItems()
-
-	if ebiten.IsKeyPressed(ebiten.KeySpace) {
-		game.player.action = INTERACT
-	} else {
-		game.player.action = WALK
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyA) && game.player.action == WALK {
-		game.movePlayer(&game.player.xLoc)
-	} else if ebiten.IsKeyPressed(ebiten.KeyD) && game.player.action == WALK {
-		game.movePlayer(&game.player.xLoc)
-	} else if ebiten.IsKeyPressed(ebiten.KeyW) && game.player.action == WALK {
-		game.movePlayer(&game.player.yLoc)
-	} else if ebiten.IsKeyPressed(ebiten.KeyS) && game.player.action == WALK {
-		game.movePlayer(&game.player.yLoc)
+	if game.player.action != DEAD {
+		if ebiten.IsKeyPressed(ebiten.KeySpace) {
+			game.player.action = INTERACT
+		} else {
+			game.player.action = WALK
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyA) && game.player.action == WALK {
+			game.movePlayer(&game.player.xLoc)
+		} else if ebiten.IsKeyPressed(ebiten.KeyD) && game.player.action == WALK {
+			game.movePlayer(&game.player.xLoc)
+		} else if ebiten.IsKeyPressed(ebiten.KeyW) && game.player.action == WALK {
+			game.movePlayer(&game.player.yLoc)
+		} else if ebiten.IsKeyPressed(ebiten.KeyS) && game.player.action == WALK {
+			game.movePlayer(&game.player.yLoc)
+		}
 	}
 	game.outOfBoundsCheck()
 	//fmt.Printf("x: %d, y: %d\n", game.player.xLoc, game.player.yLoc)
@@ -175,6 +177,7 @@ func (game *rpgGame) Update() error {
 	} else if game.player.interactCooldown > -10 {
 		game.player.interactCooldown--
 	}
+
 	for i := range game.enemies {
 		if game.enemies[i].action == PATH && game.enemies[i].pathUpdateCooldown < 0 &&
 			game.enemies[i].level == game.levelCurrent {
@@ -185,14 +188,34 @@ func (game *rpgGame) Update() error {
 		} else if game.enemies[i].pathUpdateCooldown > -10 {
 			game.enemies[i].pathUpdateCooldown--
 		}
+
+		playerX := game.player.xLoc + game.player.FRAME_WIDTH
+		xMin := game.enemies[i].xLoc + (game.enemies[i].FRAME_WIDTH / 2) - LINEOFSITERANGE
+		xMax := game.enemies[i].xLoc + (game.enemies[i].FRAME_WIDTH / 2) + LINEOFSITERANGE
+
+		playerY := game.player.yLoc + game.player.FRAME_HEIGHT
+		yMin := game.enemies[i].yLoc + (game.enemies[i].FRAME_HEIGHT / 2) - LINEOFSITERANGE
+		yMax := game.enemies[i].yLoc + (game.enemies[i].FRAME_HEIGHT / 2) + LINEOFSITERANGE
+		if game.enemies[i].action != DEAD {
+			if (xMin < playerX && playerX < xMax) && (yMin < playerY && playerY < yMax) {
+				game.enemies[i].action = PATH
+			} else {
+				game.enemies[i].action = STAY
+			}
+		}
+
 	}
 
-	game.enemiesAttack()
-	game.enemiesPathing()
-
-	for i := range game.enemies {
-		game.enemies[i].animateCharacter()
+	if game.player.hitPoints <= 0 {
+		game.player.action = DEAD
+	} else {
+		game.enemiesAttack()
+		game.enemiesPathing()
+		for i := range game.enemies {
+			game.enemies[i].animateCharacter()
+		}
 	}
+
 	game.questGiver.animateCharacter()
 
 	return nil
@@ -201,7 +224,7 @@ func (game *rpgGame) Update() error {
 func (game *rpgGame) movePlayer(location *int) {
 	if isBorderColliding(game.barrierRect, &game.player) {
 		*location -= game.player.translateDirectionToPositiveNegative() * game.player.speed * 5
-	} else {
+	} else if game.player.action != DEAD {
 		*location += game.player.translateDirectionToPositiveNegative() * game.player.speed
 	}
 }
@@ -301,7 +324,7 @@ func (game *rpgGame) Draw(screen *ebiten.Image) {
 	DrawCenteredText(screen, game.fontSmall, "Power:", 50, 700)
 	DrawCenteredText(screen, game.fontSmall, strconv.Itoa(game.player.attackPower), 120, 700)
 
-	if game.player.hitPoints <= 0 {
+	if game.player.action == DEAD {
 		DrawCenteredText(screen, game.fontLarge, "GAME OVER", game.windowHeight/2, game.windowWidth/2)
 	}
 }
@@ -371,24 +394,6 @@ func main() {
 		itemPickup:     loadEmbeddedWavToSound("itemPickup.wav", soundContext),
 	}
 
-	//tileMapHashes := make([]map[uint32]*ebiten.Image, 0, 5)
-	//levelmaps := make([]*tiled.Map, 0, 5)
-	//
-	//gameMap := loadMapFromEmbedded(path.Join("assets", "dirt.tmx")) //0
-	//ebitenImageMap := makeEbitenImagesFromMap(*gameMap)
-	//levelmaps = append(levelmaps, gameMap)
-	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
-	//
-	//gameMap = loadMapFromEmbedded(path.Join("assets", "island.tmx")) //1
-	//ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
-	//levelmaps = append(levelmaps, gameMap)
-	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
-	//
-	//gameMap = loadMapFromEmbedded(path.Join("assets", "world.tmx")) //2
-	//ebitenImageMap = makeEbitenImagesFromMap(*gameMap)
-	//levelmaps = append(levelmaps, gameMap)
-	//tileMapHashes = append(tileMapHashes, ebitenImageMap)
-
 	world := initializeWorldInfo()
 
 	windowX := world.levelCurrent.TileWidth * world.levelCurrent.Width * worldScale
@@ -417,6 +422,7 @@ func main() {
 			hitPoints:        3,
 			interactCooldown: COOLDOWN / 2,
 			attackPower:      1,
+			action:           WALK,
 		},
 		questProgress: NOTTALKED,
 	}
@@ -450,7 +456,7 @@ func main() {
 		frameDelay:         0,
 		FRAME_HEIGHT:       32,
 		FRAME_WIDTH:        32,
-		action:             PATH,
+		action:             STAY,
 		imageYOffset:       0,
 		speed:              1,
 		level:              world.levelMaps[1],
@@ -470,7 +476,7 @@ func main() {
 		frameDelay:         0,
 		FRAME_HEIGHT:       32,
 		FRAME_WIDTH:        32,
-		action:             PATH,
+		action:             STAY,
 		imageYOffset:       1,
 		speed:              1,
 		level:              world.levelMaps[0],
@@ -490,7 +496,7 @@ func main() {
 		frameDelay:         0,
 		FRAME_HEIGHT:       32,
 		FRAME_WIDTH:        32,
-		action:             PATH,
+		action:             STAY,
 		imageYOffset:       2,
 		speed:              1,
 		level:              world.levelMaps[0],
@@ -746,8 +752,9 @@ func (game *rpgGame) updatePath(c *character, player *player) {
 	startCell := game.pathGridCurrent.Get(cStartCol, cStartRow)
 	endCell := game.pathGridCurrent.Get(playerCol, playerRow)
 
-	c.path = game.pathGridCurrent.GetPathFromCells(startCell, endCell, false, false)
-
+	if startCell != nil && endCell != nil {
+		c.path = game.pathGridCurrent.GetPathFromCells(startCell, endCell, false, false)
+	}
 }
 
 func (game *rpgGame) moveCharacterAlongPath(c *character) {
