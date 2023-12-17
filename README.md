@@ -2,11 +2,10 @@
 # Comp426-001 Project 3 RPG
 ## Joshua Sheputa
 
-### Not Finished:
+### Notes:
 
-- Only 4 animated sprites
-- No moving entities
-- No visible inventory
+- Finite state machine is extremely scattered
+- Enemies only see you within a certain range
 
 ### How to Play:
 
