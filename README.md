@@ -1,11 +1,11 @@
 
-# Comp426-001 Project 3 RPG
+# Micro RPG
 ## Joshua Sheputa
 
 ### Notes:
 
-- Finite state machine is extremely scattered
-- Enemies only see you within a certain range
+- A small game built using Ebitengine
+- This introduced me to Golang
 
 ### How to Play:
 
